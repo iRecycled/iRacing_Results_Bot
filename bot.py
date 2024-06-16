@@ -75,7 +75,10 @@ async def addUser(ctx, arg):
     if channel_id:
         if sql.save_user_channel(arg, channel_id):
             driver_name = ira.saveDriverName(arg)
-            await ctx.send(f"Driver: {driver_name} ({arg}) has been added")
+            if driver_name is not None:
+                await ctx.send(f"Driver: {driver_name} ({arg}) has been added")
+            else:
+                await ctx.send(f"Failed to add User Id {arg}")
         else:
             await ctx.send(f"Failed to add User Id {arg}")
 

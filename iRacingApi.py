@@ -74,7 +74,10 @@ def raceAndDriverData(race, cust_id):
 
 def saveDriverName(cust_id):
     ir_client = login()
-    data = ir_client.member_profile(cust_id = cust_id)
+    try :
+        data = ir_client.member_profile(cust_id = cust_id)
+    except: 
+        return None
     if data is None:
         return None
     driver_name = data.get('member_info').get('display_name')
