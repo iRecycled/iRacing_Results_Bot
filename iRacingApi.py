@@ -42,9 +42,9 @@ def lastRaceTimeMatching(cust_id, race_time):
     saved_last_race_time = sql.get_last_race_time(cust_id)
     print(race_time)
     print(saved_last_race_time)
-    # if saved_last_race_time is None:
-    #     saveLastRaceTimeByCustId(cust_id, race_time)
-    #     return True
+    if saved_last_race_time is None:
+        saveLastRaceTimeByCustId(cust_id, race_time)
+        return True
     return saved_last_race_time == race_time
 
 def raceAndDriverData(race, cust_id):

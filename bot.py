@@ -18,7 +18,7 @@ bot = commands.Bot(command_prefix="/", intents=intents)  # Set the command prefi
 async def on_ready():
     print(f'We have logged in as {bot.user}')
     sql.init()
-    sql.delete_all_records()
+    #sql.delete_all_records()
     startLoopForUpdates.start() 
 
 @tasks.loop(seconds=60)
@@ -78,5 +78,14 @@ async def addUser(ctx, arg):
             await ctx.send(f"Driver: {driver_name} ({arg}) has been added")
         else:
             await ctx.send(f"Failed to add User Id {arg}")
+
+@bot.command()
+async def removeUser(ctx, arg):
+    channel_id = ctx.channel.id  # Get the channel ID where the command was sent
+    if channel_id:
+        if sql.remove_user_from_channel(arg, channel_id):
+            await ctx.send(f"User Id {arg} has been removed")
+        else:
+            await ctx.send(f"Failed to remove User Id {arg}")
 
 bot.run(TOKEN)

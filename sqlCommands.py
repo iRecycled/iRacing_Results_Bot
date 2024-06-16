@@ -22,6 +22,15 @@ def save_user_channel(user_id, channel_id):
     except sqlite3.IntegrityError as e:
         print(f"Failed to save user_id {user_id} and channel_id {channel_id}: {e}")
         return False
+    
+def remove_user_from_channel(user_id, channel_id):
+    try:
+        cursor.execute("DELETE FROM user_channels WHERE user_id=? AND channel_id=?", (str(user_id), str(channel_id)))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError as e:
+        print(f"Failed to remove user_id {user_id}: {e}")
+        return False
 
 def save_user_last_race_time(user_id, last_race_time):
     try:
