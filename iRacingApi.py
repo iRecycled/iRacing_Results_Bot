@@ -75,14 +75,15 @@ def raceAndDriverData(race, cust_id):
     track_name = race.get('track').get('track_name')
     return raceAndDriverObj(display_name, series_name, series_id, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sof, sr_change, ir_change, track_name)
 
-def saveDriverName(cust_id):
-    ir_client = login()
+def getDriverName(cust_id):
     try :
+        ir_client = login()
         data = ir_client.member_profile(cust_id = cust_id)
-    except: 
+        if data is None:
+            return None
+        driver_name = data.get('member_info').get('display_name')
+        return driver_name
+    except Exception as e: 
+        print('exception hit: ' + e)
         return None
-    if data is None:
-        return None
-    driver_name = data.get('member_info').get('display_name')
-    sql.save_user_display_name(cust_id, driver_name)
-    return driver_name
+

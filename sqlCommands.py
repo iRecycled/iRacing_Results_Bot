@@ -14,9 +14,9 @@ def init():
                     )''')
     conn.commit()
 
-def save_user_channel(user_id, channel_id):
+def save_user_channel(user_id, channel_id, display_name):
     try:
-        cursor.execute("INSERT OR REPLACE INTO user_channels (user_id, channel_id) VALUES (?, ?)", (str(user_id), str(channel_id)))
+        cursor.execute("INSERT OR REPLACE INTO user_channels (user_id, channel_id, display_name) VALUES (?, ?, ?)", (str(user_id), str(channel_id), str(display_name)))
         conn.commit()
         return True
     except sqlite3.IntegrityError as e:

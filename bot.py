@@ -72,8 +72,8 @@ async def getUserRaceDataAndPost(channel_id, user_id):
 async def addUser(ctx, arg):
     channel_id = ctx.channel.id  # Get the channel ID where the command was sent
     if channel_id:
-        driver_name = ira.saveDriverName(arg)
-        if driver_name is not None and sql.save_user_channel(arg, channel_id):
+        driver_name = ira.getDriverName(arg)
+        if driver_name and sql.save_user_channel(arg, channel_id, driver_name):
             await ctx.send(f"Driver: {driver_name} ({arg}) has been added")
         else:
             await ctx.send(f"Failed to add User Id {arg}")
