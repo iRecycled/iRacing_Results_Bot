@@ -7,7 +7,7 @@ def init():
     # Create a table for storing user_id, channel_id, last_race_time
     cursor.execute('''CREATE TABLE IF NOT EXISTS user_channels (
                         id INTEGER PRIMARY KEY,
-                        user_id TEXT UNIQUE,
+                        user_id TEXT,
                         channel_id TEXT,
                         last_race_time TEXT,
                         display_name TEXT
