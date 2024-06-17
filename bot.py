@@ -30,7 +30,6 @@ async def startLoopForUpdates():
             all_user_ids = sql.get_users_by_channel_id(channel_id)
             
             for user_id in all_user_ids:
-                ira.saveDriverName(user_id)
                 await getUserRaceDataAndPost(channel_id, user_id)
     print("Finished scheduled task, waiting...")
 
@@ -73,12 +72,9 @@ async def getUserRaceDataAndPost(channel_id, user_id):
 async def addUser(ctx, arg):
     channel_id = ctx.channel.id  # Get the channel ID where the command was sent
     if channel_id:
-        if sql.save_user_channel(arg, channel_id):
-            driver_name = ira.saveDriverName(arg)
-            if driver_name is not None:
-                await ctx.send(f"Driver: {driver_name} ({arg}) has been added")
-            else:
-                await ctx.send(f"Failed to add User Id {arg}")
+        driver_name = ira.saveDriverName(arg)
+        if driver_name is not None and sql.save_user_channel(arg, channel_id):
+            await ctx.send(f"Driver: {driver_name} ({arg}) has been added")
         else:
             await ctx.send(f"Failed to add User Id {arg}")
 

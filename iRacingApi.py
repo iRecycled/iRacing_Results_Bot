@@ -13,13 +13,16 @@ def login():
     return ir_client
 
 def main(cust_id):
-    last_race = getLastRaceByCustId(cust_id)
-    if last_race is not None:
-        last_race_time = last_race.get('session_start_time')
-        if not lastRaceTimeMatching(cust_id, last_race_time):
-            saveLastRaceTimeByCustId(cust_id, last_race_time)
-            return raceAndDriverData(last_race, cust_id)
-    else:
+    try:
+        last_race = getLastRaceByCustId(cust_id)
+        if last_race is not None:
+            last_race_time = last_race.get('session_start_time')
+            if not lastRaceTimeMatching(cust_id, last_race_time):
+                saveLastRaceTimeByCustId(cust_id, last_race_time)
+                return raceAndDriverData(last_race, cust_id)
+        else:
+            return None
+    except:
         return None
 
 def getLastRaceByCustId(cust_id):
