@@ -5,8 +5,13 @@ from datetime import datetime
 from dotenv import load_dotenv
 from collections import namedtuple
 load_dotenv()
-cust_id_last_race_dict = {}
-raceAndDriverObj = namedtuple('raceAndDriverData', ['display_name', 'series_name', 'series_id', 'car_name', 'session_start_time', 'start_position', 'finish_position', 'laps', 'incidents', 'points', 'sof', 'sr_change', 'ir_change', 'track_name' ])
+raceAndDriverObj = namedtuple('raceAndDriverData', [
+    'display_name', 'series_name', 'series_id', 'car_name', 'session_start_time', 
+    'start_position', 'finish_position', 'laps', 'incidents', 'points', 
+    'sof', 'sr_change', 'ir_change', 'track_name', 
+    'split_number', 'series_logo', 
+    'fastest_lap', 'average_lap', 'user_license'
+])
 
 def login():
     ir_client = irDataClient(username=os.getenv('ir_username'), password=os.getenv('ir_password'))
@@ -22,7 +27,9 @@ def main(cust_id):
                 return raceAndDriverData(last_race, cust_id)
         else:
             return None
-    except:
+    except Exception as e:
+        print('iRacingApi main function error')
+        print(e)
         return None
 
 def getLastRaceByCustId(cust_id):
@@ -43,8 +50,6 @@ def saveLastRaceTimeByCustId(cust_id, race_time):
 
 def lastRaceTimeMatching(cust_id, race_time):
     saved_last_race_time = sql.get_last_race_time(cust_id)
-    print(race_time)
-    print(saved_last_race_time)
     if saved_last_race_time is None:
         saveLastRaceTimeByCustId(cust_id, race_time)
         return True
@@ -52,6 +57,8 @@ def lastRaceTimeMatching(cust_id, race_time):
 
 def raceAndDriverData(race, cust_id):
     ir_client = login()
+    subsession_id = race.get('subsession_id')
+    indv_race_data = getSubsessionDataByUserId(subsession_id ,cust_id)
     display_name = sql.get_display_name(cust_id)
     series_name = race.get('series_name')
     series_id = race.get('series_id')
@@ -72,8 +79,9 @@ def raceAndDriverData(race, cust_id):
     old_ir = race.get('oldi_rating')
     new_ir = race.get('newi_rating')
     ir_change = new_ir - old_ir
+    ir_change_str = f"{'+' if ir_change > 0 else ''}{ir_change}"
     track_name = race.get('track').get('track_name')
-    return raceAndDriverObj(display_name, series_name, series_id, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sof, sr_change, ir_change, track_name)
+    return raceAndDriverObj(display_name, series_name, series_id, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sof, sr_change, ir_change_str, track_name, indv_race_data.split_number, indv_race_data.series_logo, indv_race_data.fastest_lap, indv_race_data.average_lap, indv_race_data.user_license)
 
 def getDriverName(cust_id):
     try :
@@ -87,3 +95,63 @@ def getDriverName(cust_id):
         print('exception hit: ' + e)
         return None
 
+SubsessionData = namedtuple("SubsessionData", ["split_number", "series_logo", "fastest_lap", "average_lap", "user_license"])
+
+def getSubsessionDataByUserId(subsession_id, user_id):
+    try:
+        ir_client = login()
+        race_result = ir_client.result(subsession_id)
+        licenses = race_result.get('allowed_licenses')
+        all_splits = race_result.get('associated_subsession_ids')
+        split = getSplitNumber(all_splits, subsession_id)
+        split_number = f"{split} of {len(all_splits)}"
+        series_logo = race_result.get('series_logo')
+        all_race_type_results = race_result.get('session_results')
+        all_driver_race_results = [session_results for session_results in all_race_type_results if session_results.get('simsession_name') == "RACE"]
+        if all_driver_race_results:
+            races = all_driver_race_results[0].get('results')
+            drivers_results = [result for result in races if result.get('cust_id') == int(user_id)]
+            if drivers_results:
+                fastest_lap = convert_time(drivers_results[0].get('best_lap_time'))
+                average_lap = convert_time(drivers_results[0].get('average_lap'))
+                user_license = getDriverLicense(licenses, drivers_results[0].get('new_license_level'))
+
+                data = SubsessionData(
+                    split_number,
+                    series_logo,
+                    fastest_lap,
+                    average_lap,
+                    user_license
+                )
+                return data
+    except Exception as e:
+        print('getSubsessionDataByUserId exception')
+        print(e)
+        return None
+    return None
+
+def getSplitNumber(all_splits, subsession_id):
+    try:
+        index = all_splits.index(subsession_id)
+        split_number = index + 1
+        return split_number
+    except ValueError:
+        print('get split error')
+        return None
+
+def convert_time(time):
+    time_str = str(time)
+    minutes = int(time_str[:-4]) // 60
+    seconds = int(time_str[:-4]) % 60
+    milliseconds = int(time_str[-4:-1])
+    
+    if minutes == 0:
+        return "{:02d}.{:03d}".format(seconds, milliseconds)
+    
+    return "{}:{:02d}.{:03d}".format(minutes, seconds, milliseconds)
+
+def getDriverLicense(allowed_licenses, license_id):
+    for license in allowed_licenses:
+        if license["license_group"] == license_id:
+            return license["group_name"]
+    return

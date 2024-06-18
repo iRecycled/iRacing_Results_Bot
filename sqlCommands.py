@@ -51,7 +51,6 @@ def save_user_display_name(user_id, display_name):
 def get_display_name(user_id):
     cursor.execute("SELECT display_name FROM user_channels WHERE user_id=?", (str(user_id),))
     result = cursor.fetchone()
-    print(result)
     return result[0] if result else None
 
 def get_last_race_time(user_id):

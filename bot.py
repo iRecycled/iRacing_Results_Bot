@@ -39,18 +39,24 @@ async def getUserRaceDataAndPost(channel_id, user_id):
         message = (
         f"Name: {race_data.display_name}\n"
         f"Series Name: {race_data.series_name}\n"
-        f"Series ID: {race_data.series_id}\n"
+        #f"Series ID: {race_data.series_id}\n"
         f"Car: {race_data.car_name}\n"
         f"Session Start Time: {race_data.session_start_time}\n"
         f"Start Position: {race_data.start_position}\n"
         f"Finish Position: {race_data.finish_position}\n"
-        f"Laps: {race_data.laps}\n"
+        f"Laps complete: {race_data.laps}\n"
         f"Incidents: {race_data.incidents}\n"
         f"Points: {race_data.points}\n"
         f"Strength of Field (SOF): {race_data.sof}\n"
         f"SR Change: {race_data.sr_change}\n"
         f"iRating Change: {race_data.ir_change}\n"
-        f"Track Name: {race_data.track_name}")
+        f"User License: {race_data.user_license}\n"
+        f"Track Name: {race_data.track_name}\n"
+        f"Split Number: {race_data.split_number}\n"
+        #f"Series Logo: {race_data.series_logo}\n"
+        f"Fastest Lap: {race_data.fastest_lap}\n"
+        f"Average Lap: {race_data.average_lap}\n"
+        )
         msg = str(message)
 
         print(f"Attempting to send message to channel_id: {channel_id}")
