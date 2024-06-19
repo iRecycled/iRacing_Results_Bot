@@ -34,31 +34,9 @@ async def startLoopForUpdates():
     print("Finished scheduled task, waiting...")
 
 async def getUserRaceDataAndPost(channel_id, user_id):
-    race_data = ira.main(user_id)
-    if(race_data is not None):
-        message = (
-        f"Name: {race_data.display_name}\n"
-        f"Series Name: {race_data.series_name}\n"
-        #f"Series ID: {race_data.series_id}\n"
-        f"Car: {race_data.car_name}\n"
-        f"Session Start Time: {race_data.session_start_time}\n"
-        f"Start Position: {race_data.start_position}\n"
-        f"Finish Position: {race_data.finish_position}\n"
-        f"Laps complete: {race_data.laps}\n"
-        f"Incidents: {race_data.incidents}\n"
-        f"Points: {race_data.points}\n"
-        f"Strength of Field (SOF): {race_data.sof}\n"
-        f"SR Change: {race_data.sr_change}\n"
-        f"iRating Change: {race_data.ir_change}\n"
-        f"User License: {race_data.user_license}\n"
-        f"Track Name: {race_data.track_name}\n"
-        f"Split Number: {race_data.split_number}\n"
-        #f"Series Logo: {race_data.series_logo}\n"
-        f"Fastest Lap: {race_data.fastest_lap}\n"
-        f"Average Lap: {race_data.average_lap}\n"
-        )
-        msg = str(message)
-
+    race_data_message = ira.main(user_id)
+    if(race_data_message is not None):
+        
         print(f"Attempting to send message to channel_id: {channel_id}")
         channel = bot.get_channel(int(channel_id))
         if channel is None:
@@ -66,7 +44,7 @@ async def getUserRaceDataAndPost(channel_id, user_id):
             return
         
         try:
-            await channel.send(msg)
+            await channel.send(race_data_message)
             print(f"Message sent to channel {channel_id}")
         except discord.Forbidden:
             print(f"Bot does not have permission to send messages in channel {channel_id}.")
