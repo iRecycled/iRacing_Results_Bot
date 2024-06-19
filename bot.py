@@ -2,6 +2,7 @@ from discord.ext import commands, tasks
 import discord
 import os
 import iRacingApi as ira
+import iRacingLaps as laps
 import sqlCommands as sql
 from dotenv import load_dotenv
 
@@ -34,8 +35,9 @@ async def startLoopForUpdates():
     print("Finished scheduled task, waiting...")
 
 async def getUserRaceDataAndPost(channel_id, user_id):
-    race_data_message = ira.main(user_id)
-    if(race_data_message is not None):
+    last_race = ira.getLastRaceIfNew(user_id)
+    if last_race is not None:
+        driver_race_result_msg = ira.raceAndDriverData(last_race, user_id)            
         
         print(f"Attempting to send message to channel_id: {channel_id}")
         channel = bot.get_channel(int(channel_id))
@@ -44,7 +46,11 @@ async def getUserRaceDataAndPost(channel_id, user_id):
             return
         
         try:
-            await channel.send(race_data_message)
+            await channel.send(driver_race_result_msg)
+            if laps.getLapsChart(last_race, user_id):
+                with open('race_plot.png', 'rb') as pic:
+                    await channel.send(file=discord.File(pic))
+
             print(f"Message sent to channel {channel_id}")
         except discord.Forbidden:
             print(f"Bot does not have permission to send messages in channel {channel_id}.")

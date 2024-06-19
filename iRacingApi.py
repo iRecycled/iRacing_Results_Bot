@@ -17,14 +17,15 @@ def login():
     ir_client = irDataClient(username=os.getenv('ir_username'), password=os.getenv('ir_password'))
     return ir_client
 
-def main(cust_id):
+def getLastRaceIfNew(cust_id):
     try:
         last_race = getLastRaceByCustId(cust_id)
         if last_race is not None:
             last_race_time = last_race.get('session_start_time')
             if not lastRaceTimeMatching(cust_id, last_race_time):
                 saveLastRaceTimeByCustId(cust_id, last_race_time)
-                return raceAndDriverData(last_race, cust_id)
+                return last_race
+                #return raceAndDriverData(last_race, cust_id)
         else:
             return None
     except Exception as e:
@@ -49,6 +50,7 @@ def saveLastRaceTimeByCustId(cust_id, race_time):
     return sql.save_user_last_race_time(cust_id, race_time)
 
 def lastRaceTimeMatching(cust_id, race_time):
+    return False
     saved_last_race_time = sql.get_last_race_time(cust_id)
     if saved_last_race_time is None:
         saveLastRaceTimeByCustId(cust_id, race_time)
@@ -83,29 +85,6 @@ def raceAndDriverData(race, cust_id):
     track_name = race.get('track').get('track_name')
 
     return formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, indv_race_data.sof, ir_change_str, track_name, indv_race_data.split_number, indv_race_data.series_logo, indv_race_data.fastest_lap, indv_race_data.average_lap, indv_race_data.user_license)
-
-def formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, sof, ir_change_str, track_name, split_number, series_logo, fastest_lap, average_lap, user_license):
-    message = (
-        f"Name: {display_name}\n"
-        f"Series Name: {series_name}\n"
-        f"Car: {car_name}\n"
-        f"Track Name: {track_name}\n"
-        f"Session Start Time: {session_start_time}\n"
-        f"Start Position: {start_position}\n"
-        f"Finish Position: {finish_position}\n"
-        f"Laps complete: {laps}\n"
-        f"Points: {points}\n"
-        f"Strength of Field (SOF): {sof}\n"
-        f"Incidents: {incidents}\n"
-        f"SR Change: {sr_change_str}\n"
-        f"iRating Change: {ir_change_str}\n"
-        f"User License: {user_license}\n"
-        f"Split Number: {split_number}\n"
-        #f"Series Logo: {series_logo}\n"
-        f"Fastest Lap: {fastest_lap}\n"
-        f"Average Lap: {average_lap}\n"
-    )
-    return message
 
 def getDriverName(cust_id):
     try :
@@ -186,3 +165,26 @@ def getDriverLicense(license_level, allowed_licenses):
             return group_name
     
     return None  # Return None if no group matches the license_level
+
+def formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, sof, ir_change_str, track_name, split_number, series_logo, fastest_lap, average_lap, user_license):
+    message = (
+        f"Name: {display_name}\n"
+        f"Series Name: {series_name}\n"
+        f"Car: {car_name}\n"
+        f"Track Name: {track_name}\n"
+        f"Session Start Time: {session_start_time}\n"
+        f"Start Position: {start_position}\n"
+        f"Finish Position: {finish_position}\n"
+        f"Laps complete: {laps}\n"
+        f"Points: {points}\n"
+        f"Strength of Field (SOF): {sof}\n"
+        f"Incidents: {incidents}\n"
+        f"SR Change: {sr_change_str}\n"
+        f"iRating Change: {ir_change_str}\n"
+        f"User License: {user_license}\n"
+        f"Split Number: {split_number}\n"
+        #f"Series Logo: {series_logo}\n"
+        f"Fastest Lap: {fastest_lap}\n"
+        f"Average Lap: {average_lap}\n"
+    )
+    return message
