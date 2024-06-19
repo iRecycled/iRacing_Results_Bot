@@ -139,7 +139,7 @@ def getSubsessionDataByUserId(subsession_id, user_id):
             if drivers_results:
                 fastest_lap = convert_time(drivers_results[0].get('best_lap_time'))
                 average_lap = convert_time(drivers_results[0].get('average_lap'))
-                user_license = getDriverLicense(licenses, int(drivers_results[0].get('old_license_level')))
+                user_license = getDriverLicense(int(drivers_results[0].get('old_license_level')), licenses)
 
                 data = SubsessionData(
                     split_number,
@@ -176,8 +176,13 @@ def convert_time(time):
     
     return "{}:{:02d}.{:03d}".format(minutes, seconds, milliseconds)
 
-def getDriverLicense(allowed_licenses, license_id):
-    for license in allowed_licenses:
-        if license["license_group"] == license_id:
-            return license["group_name"]
-    return
+def getDriverLicense(license_level, allowed_licenses):
+    for license_info in allowed_licenses:
+        min_level = license_info['min_license_level']
+        max_level = license_info['max_license_level']
+        group_name = license_info['group_name']
+        
+        if min_level <= license_level <= max_level:
+            return group_name
+    
+    return None  # Return None if no group matches the license_level
