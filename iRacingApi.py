@@ -49,7 +49,6 @@ def saveLastRaceTimeByCustId(cust_id, race_time):
     return sql.save_user_last_race_time(cust_id, race_time)
 
 def lastRaceTimeMatching(cust_id, race_time):
-    return False
     saved_last_race_time = sql.get_last_race_time(cust_id)
     if saved_last_race_time is None:
         saveLastRaceTimeByCustId(cust_id, race_time)
