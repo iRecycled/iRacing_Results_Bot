@@ -8,9 +8,9 @@ load_dotenv()
 raceAndDriverObj = namedtuple('raceAndDriverData', [
     'display_name', 'series_name', 'series_id', 'car_name', 'session_start_time', 
     'start_position', 'finish_position', 'laps', 'incidents', 'points', 
-    'sof', 'sr_change', 'ir_change', 'track_name', 
+    'sr_change', 'ir_change', 'track_name', 
     'split_number', 'series_logo', 
-    'fastest_lap', 'average_lap', 'user_license'
+    'fastest_lap', 'average_lap', 'user_license', 'sof'
 ])
 
 def login():
@@ -83,7 +83,7 @@ def raceAndDriverData(race, cust_id):
     ir_change_str = f"{'+' if ir_change > 0 else ''}{ir_change} ({new_ir})"
     track_name = race.get('track').get('track_name')
 
-    return formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, indv_race_data.sof, ir_change_str, track_name, indv_race_data.split_number, indv_race_data.series_logo, indv_race_data.fastest_lap, indv_race_data.average_lap, indv_race_data.user_license)
+    return formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, ir_change_str, track_name, indv_race_data.split_number, indv_race_data.series_logo, indv_race_data.fastest_lap, indv_race_data.average_lap, indv_race_data.user_license, indv_race_data.sof,)
 
 def getDriverName(cust_id):
     try :
@@ -165,7 +165,7 @@ def getDriverLicense(license_level, allowed_licenses):
     
     return None  # Return None if no group matches the license_level
 
-def formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, sof, ir_change_str, track_name, split_number, series_logo, fastest_lap, average_lap, user_license):
+def formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, ir_change_str, track_name, split_number, series_logo, fastest_lap, average_lap, user_license, sof):
     message = (
         f"Name: {display_name}\n"
         f"Series Name: {series_name}\n"
