@@ -1,4 +1,5 @@
 .env
 discord_bot.db
-/venv/
+venv/
 race_plot.png
+__pycache__
