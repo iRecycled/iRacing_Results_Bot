@@ -12,9 +12,13 @@ raceAndDriverObj = namedtuple('raceAndDriverData', [
     'split_number', 'series_logo', 
     'fastest_lap', 'average_lap', 'user_license', 'sof'
 ])
+ir_client = None
 
 def login():
-    ir_client = irDataClient(username=os.getenv('ir_username'), password=os.getenv('ir_password'))
+    global ir_client
+    
+    if ir_client is None or (hasattr(ir_client, 'authenticated') and not ir_client.authenticated):
+        ir_client = irDataClient(username=os.getenv('ir_username'), password=os.getenv('ir_password'))
     return ir_client
 
 def getLastRaceIfNew(cust_id, channel_id):
