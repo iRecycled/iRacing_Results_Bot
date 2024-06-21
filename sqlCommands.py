@@ -32,9 +32,9 @@ def remove_user_from_channel(user_id, channel_id):
         print(f"Failed to remove user_id {user_id}: {e}")
         return False
 
-def save_user_last_race_time(user_id, last_race_time):
+def save_user_last_race_time(user_id, last_race_time, channel_id):
     try:
-        cursor.execute("UPDATE user_channels SET last_race_time=? WHERE user_id=?", (last_race_time, user_id))
+        cursor.execute("UPDATE user_channels SET last_race_time=? WHERE user_id=? AND channel_id=?", (last_race_time, user_id, channel_id))
         conn.commit()
         return True
     except sqlite3.IntegrityError as e:
@@ -53,11 +53,11 @@ def get_display_name(user_id):
     result = cursor.fetchone()
     return result[0] if result else None
 
-def get_last_race_time(user_id):
+def get_last_race_time(user_id, channel_id):
     try:
         with sqlite3.connect('discord_bot.db') as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT last_race_time FROM user_channels WHERE user_id=? LIMIT 1", (user_id,))
+            cursor.execute("SELECT last_race_time FROM user_channels WHERE user_id=? AND channel_id=? LIMIT 1", (user_id, channel_id))
             result = cursor.fetchone()
             if result:
                 return result[0]

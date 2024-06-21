@@ -35,7 +35,7 @@ async def startLoopForUpdates():
     print("Finished scheduled task, waiting...")
 
 async def getUserRaceDataAndPost(channel_id, user_id):
-    last_race = ira.getLastRaceIfNew(user_id)
+    last_race = ira.getLastRaceIfNew(user_id, channel_id)
     if last_race is not None:
         driver_race_result_msg = ira.raceAndDriverData(last_race, user_id)            
         

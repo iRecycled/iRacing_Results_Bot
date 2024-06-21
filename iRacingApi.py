@@ -17,13 +17,13 @@ def login():
     ir_client = irDataClient(username=os.getenv('ir_username'), password=os.getenv('ir_password'))
     return ir_client
 
-def getLastRaceIfNew(cust_id):
+def getLastRaceIfNew(cust_id, channel_id):
     try:
         last_race = getLastRaceByCustId(cust_id)
         if last_race is not None:
             last_race_time = last_race.get('session_start_time')
-            if not lastRaceTimeMatching(cust_id, last_race_time):
-                saveLastRaceTimeByCustId(cust_id, last_race_time)
+            if not lastRaceTimeMatching(cust_id, last_race_time, channel_id):
+                saveLastRaceTimeByCustId(cust_id, last_race_time, channel_id)
                 return last_race
                 #return raceAndDriverData(last_race, cust_id)
         else:
@@ -46,13 +46,13 @@ def getLastRaceByCustId(cust_id):
     print("No races found")
     return None
 
-def saveLastRaceTimeByCustId(cust_id, race_time):
-    return sql.save_user_last_race_time(cust_id, race_time)
+def saveLastRaceTimeByCustId(cust_id, race_time, channel_id):
+    return sql.save_user_last_race_time(cust_id, race_time, channel_id)
 
-def lastRaceTimeMatching(cust_id, race_time):
-    saved_last_race_time = sql.get_last_race_time(cust_id)
+def lastRaceTimeMatching(cust_id, race_time, channel_id):
+    saved_last_race_time = sql.get_last_race_time(cust_id, channel_id)
     if saved_last_race_time is None:
-        saveLastRaceTimeByCustId(cust_id, race_time)
+        saveLastRaceTimeByCustId(cust_id, race_time, channel_id)
         return True
     return saved_last_race_time == race_time
 
