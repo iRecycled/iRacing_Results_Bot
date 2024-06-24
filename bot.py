@@ -13,7 +13,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents, command_prefix="/")
 
-bot = commands.Bot(command_prefix="/", intents=intents)  # Set the command prefix as '/'
+bot = commands.Bot(command_prefix="/", intents=intents, case_insensitive=True) # Set the command prefix as '/'
 
 @bot.event
 async def on_ready():
@@ -66,7 +66,7 @@ async def addUser(ctx, arg):
         if driver_name and sql.save_user_channel(arg, channel_id, driver_name):
             await ctx.send(f"Driver: {driver_name} ({arg}) has been added")
         else:
-            await ctx.send(f"Failed to add User Id {arg}")
+            await ctx.send(f"Failed to add User Id {arg}.")
 
 @bot.command()
 async def removeUser(ctx, arg):
@@ -75,6 +75,6 @@ async def removeUser(ctx, arg):
         if sql.remove_user_from_channel(arg, channel_id):
             await ctx.send(f"User Id {arg} has been removed")
         else:
-            await ctx.send(f"Failed to remove User Id {arg}")
+            await ctx.send(f"Failed to remove User Id {arg}.")
 
 bot.run(TOKEN)

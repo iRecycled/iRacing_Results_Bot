@@ -16,12 +16,19 @@ def init():
 
 def save_user_channel(user_id, channel_id, display_name):
     try:
-        cursor.execute("INSERT OR REPLACE INTO user_channels (user_id, channel_id, display_name) VALUES (?, ?, ?)", (str(user_id), str(channel_id), str(display_name)))
+        cursor.execute("SELECT 1 FROM user_channels WHERE user_id = ? AND channel_id = ?", (str(user_id), str(channel_id)))
+        exists = cursor.fetchone()
+
+        if exists:
+            return True
+
+        cursor.execute("INSERT INTO user_channels (user_id, channel_id, display_name) VALUES (?, ?, ?)", (str(user_id), str(channel_id), str(display_name)))
         conn.commit()
         return True
     except sqlite3.IntegrityError as e:
         print(f"Failed to save user_id {user_id} and channel_id {channel_id}: {e}")
         return False
+
     
 def remove_user_from_channel(user_id, channel_id):
     try:
