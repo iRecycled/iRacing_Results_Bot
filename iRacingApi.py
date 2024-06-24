@@ -16,8 +16,8 @@ ir_client = None
 
 def login():
     global ir_client
-    
     if ir_client is None or (hasattr(ir_client, 'authenticated') and not ir_client.authenticated):
+        print("Signing into iRacing.")
         ir_client = irDataClient(username=os.getenv('ir_username'), password=os.getenv('ir_password'))
     return ir_client
 
