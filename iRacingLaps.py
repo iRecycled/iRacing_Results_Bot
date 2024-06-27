@@ -1,6 +1,8 @@
 from iracingdataapi.client import irDataClient
 import iRacingApi as ira
+import logging
 
+logging.basicConfig(level=logging.INFO, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
 import matplotlib.pyplot as plt
 
 def getLapsChart(last_race, highlighted_cust_id):
@@ -64,5 +66,6 @@ def getLapsChart(last_race, highlighted_cust_id):
         plt.savefig('race_plot.png', facecolor="#40444B")
         return True
     except Exception as e:
+        logging.error(f"Exception in iRacingLaps: {e}")
         print(f"Exception: {e}")
         return False

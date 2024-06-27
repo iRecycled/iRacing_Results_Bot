@@ -3,3 +3,4 @@ venv/
 discord_bot.db
 race_plot.png
 __pycache__/*
+bot.log

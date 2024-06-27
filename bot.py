@@ -4,7 +4,12 @@ import os
 import iRacingApi as ira
 import iRacingLaps as laps
 import sqlCommands as sql
+import logging
+
 from dotenv import load_dotenv
+
+
+logging.basicConfig(level=logging.error, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -14,25 +19,30 @@ intents.message_content = True
 client = discord.Client(intents=intents, command_prefix="/")
 
 bot = commands.Bot(command_prefix="/", intents=intents, case_insensitive=True) # Set the command prefix as '/'
-
 @bot.event
 async def on_ready():
     print(f'We have logged in as {bot.user}')
+    logging.error(f'logged in as {bot.user}')
     sql.init()
     #sql.delete_all_records()
-    startLoopForUpdates.start() 
+    startLoopForUpdates.start()
 
 @tasks.loop(seconds=60)
 async def startLoopForUpdates():
-    print("Running scheduled task to check races")
-    all_channel_ids = sql.get_all_channel_ids()
-    if(all_channel_ids is not None):
-        for channel_id in all_channel_ids:
-            all_user_ids = sql.get_users_by_channel_id(channel_id)
-            
-            for user_id in all_user_ids:
-                await getUserRaceDataAndPost(channel_id, user_id)
-    print("Finished scheduled task, waiting...")
+    try:
+        print("Running scheduled task to check races")
+        logging.error("Running scheduled task to check races")
+        all_channel_ids = sql.get_all_channel_ids()
+        if(all_channel_ids is not None):
+            for channel_id in all_channel_ids:
+                all_user_ids = sql.get_users_by_channel_id(channel_id)
+                
+                for user_id in all_user_ids:
+                    await getUserRaceDataAndPost(channel_id, user_id)
+        print("Finished scheduled task, waiting...")
+        logging.error("Finished scheduled task, waiting...")
+    except Exception as e:
+        logging.error(e)
 
 async def getUserRaceDataAndPost(channel_id, user_id):
     last_race = ira.getLastRaceIfNew(user_id, channel_id)
@@ -51,10 +61,13 @@ async def getUserRaceDataAndPost(channel_id, user_id):
                 with open('race_plot.png', 'rb') as pic:
                     await channel.send(file=discord.File(pic))
 
+            logging.error(f"Message sent to channel {channel_id}")
             print(f"Message sent to channel {channel_id}")
         except discord.Forbidden:
+            logging.error(f"Bot does not have permission to send messages in channel {channel_id}.")
             print(f"Bot does not have permission to send messages in channel {channel_id}.")
         except discord.HTTPException as e:
+            logging.error(f"Failed to send message due to HTTP error: {e}")
             print(f"Failed to send message due to HTTP error: {e}")
 
 

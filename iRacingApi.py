@@ -1,10 +1,12 @@
 from iracingdataapi.client import irDataClient
 import sqlCommands as sql
 import os
+import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from collections import namedtuple
 load_dotenv()
+logging.basicConfig(level=logging.INFO, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
 raceAndDriverObj = namedtuple('raceAndDriverData', [
     'display_name', 'series_name', 'series_id', 'car_name', 'session_start_time', 
     'start_position', 'finish_position', 'laps', 'incidents', 'points', 
@@ -29,10 +31,11 @@ def getLastRaceIfNew(cust_id, channel_id):
             if not lastRaceTimeMatching(cust_id, last_race_time, channel_id):
                 saveLastRaceTimeByCustId(cust_id, last_race_time, channel_id)
                 return last_race
-                #return raceAndDriverData(last_race, cust_id)
         else:
             return None
     except Exception as e:
+        logging.error(e)
+        logging.error("Error in 'getLastRaceIfNew'")
         print('iRacingApi main function error')
         print(e)
         return None
@@ -133,6 +136,8 @@ def getSubsessionDataByUserId(subsession_id, user_id):
                 )
                 return data
     except Exception as e:
+        logging.error(e)
+        logging.error("Error in getSubsessionDataByUserId")
         print('getSubsessionDataByUserId exception')
         print(e)
         return None
@@ -167,7 +172,7 @@ def getDriverLicense(license_level, allowed_licenses):
         if min_level <= license_level <= max_level:
             return group_name
     
-    return None  # Return None if no group matches the license_level
+    return None
 
 def formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, ir_change_str, track_name, split_number, series_logo, fastest_lap, average_lap, user_license, sof):
     message = (
