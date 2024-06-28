@@ -34,7 +34,7 @@ def getLastRaceIfNew(cust_id, channel_id):
         else:
             return None
     except Exception as e:
-        logging.error(e)
+        logging.exception(e)
         logging.error("Error in 'getLastRaceIfNew'")
         print('iRacingApi main function error')
         print(e)
@@ -101,6 +101,7 @@ def getDriverName(cust_id):
         driver_name = data.get('member_info').get('display_name')
         return driver_name
     except Exception as e: 
+        logging.exception(e)
         print('exception hit: ' + e)
         return None
 
@@ -113,7 +114,7 @@ def getSubsessionDataByUserId(subsession_id, user_id):
         licenses = race_result.get('allowed_licenses')
         all_splits = race_result.get('associated_subsession_ids')
         split = getSplitNumber(all_splits, subsession_id)
-        split_number = f"{split} of {len(all_splits)}"
+        split_number = f"{split} of {len(all_splits)}" if split is not None and all_splits is not None else "N/A"
         series_logo = race_result.get('series_logo')
         sof = race_result.get('event_strength_of_field')
         all_race_type_results = race_result.get('session_results')
@@ -136,7 +137,7 @@ def getSubsessionDataByUserId(subsession_id, user_id):
                 )
                 return data
     except Exception as e:
-        logging.error(e)
+        logging.exception(e)
         logging.error("Error in getSubsessionDataByUserId")
         print('getSubsessionDataByUserId exception')
         print(e)
@@ -148,7 +149,8 @@ def getSplitNumber(all_splits, subsession_id):
         index = all_splits.index(subsession_id)
         split_number = index + 1
         return split_number
-    except ValueError:
+    except Exception as e:
+        logging.exception(e)
         print('get split error')
         return None
 

@@ -42,7 +42,7 @@ async def startLoopForUpdates():
         print("Finished scheduled task, waiting...")
         logging.error("Finished scheduled task, waiting...")
     except Exception as e:
-        logging.error(e)
+        logging.exception(e)
 
 async def getUserRaceDataAndPost(channel_id, user_id):
     last_race = ira.getLastRaceIfNew(user_id, channel_id)
@@ -64,10 +64,10 @@ async def getUserRaceDataAndPost(channel_id, user_id):
             logging.error(f"Message sent to channel {channel_id}")
             print(f"Message sent to channel {channel_id}")
         except discord.Forbidden:
-            logging.error(f"Bot does not have permission to send messages in channel {channel_id}.")
+            logging.exception(f"Bot does not have permission to send messages in channel {channel_id}.")
             print(f"Bot does not have permission to send messages in channel {channel_id}.")
         except discord.HTTPException as e:
-            logging.error(f"Failed to send message due to HTTP error: {e}")
+            logging.exception(f"Failed to send message due to HTTP error: {e}")
             print(f"Failed to send message due to HTTP error: {e}")
 
 
