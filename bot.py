@@ -31,7 +31,6 @@ async def on_ready():
 async def startLoopForUpdates():
     try:
         print("Running scheduled task to check races")
-        logging.error("Running scheduled task to check races")
         all_channel_ids = sql.get_all_channel_ids()
         if(all_channel_ids is not None):
             for channel_id in all_channel_ids:
@@ -40,7 +39,6 @@ async def startLoopForUpdates():
                 for user_id in all_user_ids:
                     await getUserRaceDataAndPost(channel_id, user_id)
         print("Finished scheduled task, waiting...")
-        logging.error("Finished scheduled task, waiting...")
     except Exception as e:
         logging.exception(e)
 

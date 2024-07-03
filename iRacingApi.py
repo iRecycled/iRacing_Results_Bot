@@ -18,10 +18,12 @@ ir_client = None
 
 def login():
     global ir_client
-    if ir_client is None or (hasattr(ir_client, 'authenticated') and not ir_client.authenticated):
-        print("Signing into iRacing.")
-        ir_client = irDataClient(username=os.getenv('ir_username'), password=os.getenv('ir_password'))
-    return ir_client
+    try :
+        if ir_client is None or (hasattr(ir_client, 'authenticated') and not ir_client.authenticated):
+            print("Signing into iRacing.")
+            ir_client = irDataClient(username=os.getenv('ir_username'), password=os.getenv('ir_password'))
+        return ir_client
+    except: return None
 
 def getLastRaceIfNew(cust_id, channel_id):
     try:
@@ -36,22 +38,27 @@ def getLastRaceIfNew(cust_id, channel_id):
     except Exception as e:
         logging.exception(e)
         logging.error("Error in 'getLastRaceIfNew'")
+        logging.error(cust_id, last_race)
         print('iRacingApi main function error')
         print(e)
         return None
 
 def getLastRaceByCustId(cust_id):
-    ir_client = login()
-    lastTenRaces = ir_client.stats_member_recent_races(cust_id = cust_id)
-    
-    if lastTenRaces is not None:
-        races = lastTenRaces.get('races', [])
-        if len(races) > 0:
-            firstRace = races[0]
-            return firstRace
+    try:
+        ir_client = login()
+        lastTenRaces = ir_client.stats_member_recent_races(cust_id = cust_id)
+        
+        if lastTenRaces is not None:
+            races = lastTenRaces.get('races', [])
+            if len(races) > 0:
+                firstRace = races[0]
+                return firstRace
 
-    print("No races found")
-    return None
+        print("No races found")
+        return None
+    except Exception as e:
+        logging.error(e)
+        return None
 
 def saveLastRaceTimeByCustId(cust_id, race_time, channel_id):
     return sql.save_user_last_race_time(cust_id, race_time, channel_id)
