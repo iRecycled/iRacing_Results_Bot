@@ -8,10 +8,11 @@ import logging
 
 from dotenv import load_dotenv
 
-
-logging.basicConfig(level=logging.error, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
-
 load_dotenv()
+
+# Use INFO for debugging, WARNING for production
+LOG_LEVEL = logging.INFO if os.getenv('DEBUG_MODE', 'false').lower() == 'true' else logging.WARNING
+logging.basicConfig(level=LOG_LEVEL, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 intents = discord.Intents.default()
@@ -31,42 +32,63 @@ async def on_ready():
 async def startLoopForUpdates():
     try:
         print("Running scheduled task to check races")
+        logging.info("=== Starting scheduled race check ===")
         all_channel_ids = sql.get_all_channel_ids()
+        logging.info(f"Found {len(all_channel_ids) if all_channel_ids else 0} channels to check")
+
         if(all_channel_ids is not None):
             for channel_id in all_channel_ids:
                 all_user_ids = sql.get_users_by_channel_id(channel_id)
-                
+                logging.info(f"Channel {channel_id}: checking {len(all_user_ids) if all_user_ids else 0} users")
+
                 for user_id in all_user_ids:
+                    logging.info(f"Processing user_id={user_id} in channel_id={channel_id}")
                     await getUserRaceDataAndPost(channel_id, user_id)
+
         print("Finished scheduled task, waiting...")
+        logging.info("=== Finished scheduled race check ===")
     except Exception as e:
         logging.exception(e)
+        logging.error("Error in startLoopForUpdates")
 
 async def getUserRaceDataAndPost(channel_id, user_id):
+    logging.info(f"getUserRaceDataAndPost called for user_id={user_id}, channel_id={channel_id}")
     last_race = ira.getLastRaceIfNew(user_id, channel_id)
+
     if last_race is not None:
-        driver_race_result_msg = ira.raceAndDriverData(last_race, user_id)            
-        
+        logging.info(f"New race found for user_id={user_id}, preparing message")
+        driver_race_result_msg = ira.raceAndDriverData(last_race, user_id)
+
         print(f"Attempting to send message to channel_id: {channel_id}")
+        logging.info(f"Attempting to send message to channel_id={channel_id}")
+
         channel = bot.get_channel(int(channel_id))
         if channel is None:
             print(f"Channel with ID {channel_id} not found.")
+            logging.error(f"Channel with ID {channel_id} not found.")
             return
-        
+
         try:
+            logging.info(f"Sending race result message to channel {channel_id}")
             await channel.send(driver_race_result_msg)
+
+            logging.info(f"Generating lap chart for user_id={user_id}")
             if laps.getLapsChart(last_race, user_id):
                 with open('race_plot.png', 'rb') as pic:
                     await channel.send(file=discord.File(pic))
+                logging.info(f"Lap chart sent to channel {channel_id}")
 
-            logging.error(f"Message sent to channel {channel_id}")
+            logging.info(f"Message successfully sent to channel {channel_id}")
             print(f"Message sent to channel {channel_id}")
         except discord.Forbidden:
-            logging.exception(f"Bot does not have permission to send messages in channel {channel_id}.")
+            logging.error(f"Bot does not have permission to send messages in channel {channel_id}.")
             print(f"Bot does not have permission to send messages in channel {channel_id}.")
         except discord.HTTPException as e:
-            logging.exception(f"Failed to send message due to HTTP error: {e}")
+            logging.exception(e)
+            logging.error(f"Failed to send message due to HTTP error: {e}")
             print(f"Failed to send message due to HTTP error: {e}")
+    else:
+        logging.info(f"No new race for user_id={user_id} in channel_id={channel_id}")
 
 
 @bot.command()

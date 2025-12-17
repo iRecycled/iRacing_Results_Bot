@@ -52,18 +52,30 @@ def getLapsChart(last_race, highlighted_cust_id):
         # Determine the x-axis tick interval based on the number of laps
         if leader_lap_numbers:
             total_laps = max(leader_lap_numbers)
-            if total_laps > 30:
-                tick_interval = 5
-            else:
-                tick_interval = 1
+            min_lap = min(leader_lap_numbers)
 
-            plt.xticks(range(min(leader_lap_numbers), total_laps + 1, tick_interval), color="white")
-            plt.xlim(min(leader_lap_numbers), total_laps)
+            # Dynamic tick interval based on total laps
+            if total_laps <= 15:
+                tick_interval = 1
+            elif total_laps <= 30:
+                tick_interval = 2
+            elif total_laps <= 60:
+                tick_interval = 5
+            elif total_laps <= 100:
+                tick_interval = 10
+            else:
+                tick_interval = 20
+
+            plt.xticks(range(min_lap, total_laps + 1, tick_interval), color="white")
+            plt.xlim(min_lap, total_laps)
 
         plt.yticks(range(1, len(race_laps_per_driver) + 1), color="white")  # Show positions from 1 to max_position
         plt.gca().invert_yaxis()  # Invert y-axis to show higher positions at the top
 
-        plt.savefig('race_plot.png', facecolor="#40444B")
+        # Adjust layout to prevent label cutoff
+        plt.tight_layout()
+
+        plt.savefig('race_plot.png', facecolor="#40444B", bbox_inches='tight')
         return True
     except Exception as e:
         logging.error(f"Exception in iRacingLaps: {e}")

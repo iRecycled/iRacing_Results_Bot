@@ -2,62 +2,144 @@ from iracingdataapi.client import irDataClient
 import sqlCommands as sql
 import os
 import logging
+import requests
 from datetime import datetime
 from dotenv import load_dotenv
 from collections import namedtuple
+from iracing_oauth import mask_secret
+
 load_dotenv()
-logging.basicConfig(level=logging.INFO, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+# Use INFO for debugging, WARNING for production
+LOG_LEVEL = logging.INFO if os.getenv('DEBUG_MODE', 'false').lower() == 'true' else logging.WARNING
+logging.basicConfig(level=LOG_LEVEL, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
 raceAndDriverObj = namedtuple('raceAndDriverData', [
-    'display_name', 'series_name', 'series_id', 'car_name', 'session_start_time', 
-    'start_position', 'finish_position', 'laps', 'incidents', 'points', 
-    'sr_change', 'ir_change', 'track_name', 
-    'split_number', 'series_logo', 
+    'display_name', 'series_name', 'series_id', 'car_name', 'session_start_time',
+    'start_position', 'finish_position', 'laps', 'incidents', 'points',
+    'sr_change', 'ir_change', 'track_name',
+    'split_number', 'series_logo',
     'fastest_lap', 'average_lap', 'user_license', 'sof'
 ])
+
+# OAuth credentials
+CLIENT_ID = os.getenv('IRACING_CLIENT_ID')
+CLIENT_SECRET = os.getenv('IRACING_CLIENT_SECRET')
+TOKEN_URL = "https://oauth.iracing.com/oauth2/token"
+
 ir_client = None
+access_token = None
+
+def get_oauth_token():
+    """
+    Get OAuth access token using password-limited grant
+    """
+    username = os.getenv('ir_username')
+    password = os.getenv('ir_password')
+
+    if not username or not password or not CLIENT_SECRET:
+        logging.error("Missing OAuth credentials in environment variables")
+        return None
+
+    try:
+        masked_client_secret = mask_secret(CLIENT_SECRET, CLIENT_ID)
+        masked_password = mask_secret(password, username)
+
+        data = {
+            "grant_type": "password_limited",
+            "client_id": CLIENT_ID,
+            "client_secret": masked_client_secret,
+            "username": username,
+            "password": masked_password,
+            "scope": "iracing.auth"
+        }
+
+        response = requests.post(TOKEN_URL, data=data, timeout=20)
+
+        if response.status_code == 200:
+            tokens = response.json()
+            return tokens.get('access_token')
+        else:
+            logging.error(f"OAuth authentication failed: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        logging.exception(e)
+        logging.error("Error getting OAuth token")
+        return None
 
 def login():
-    global ir_client
-    try :
+    global ir_client, access_token
+    try:
         if ir_client is None or (hasattr(ir_client, 'authenticated') and not ir_client.authenticated):
-            print("Signing into iRacing.")
-            ir_client = irDataClient(username=os.getenv('ir_username'), password=os.getenv('ir_password'))
+            logging.info("Attempting to sign into iRacing with OAuth")
+            print("Signing into iRacing with OAuth.")
+
+            # Get OAuth token
+            access_token = get_oauth_token()
+            if not access_token:
+                logging.error("Failed to get OAuth access token")
+                return None
+
+            logging.info("OAuth token received, initializing irDataClient")
+            # Initialize client with OAuth token
+            ir_client = irDataClient(access_token=access_token)
+            logging.info("Successfully initialized irDataClient with OAuth token")
+
         return ir_client
-    except: return None
+    except Exception as e:
+        logging.exception(e)
+        logging.error("Error in login function")
+        return None
 
 def getLastRaceIfNew(cust_id, channel_id):
     try:
+        logging.info(f"Checking for new race: cust_id={cust_id}, channel_id={channel_id}")
         last_race = getLastRaceByCustId(cust_id)
+
         if last_race is not None:
             last_race_time = last_race.get('session_start_time')
+            logging.info(f"Found race with time: {last_race_time}")
+
             if not lastRaceTimeMatching(cust_id, last_race_time, channel_id):
+                logging.info(f"New race detected for cust_id={cust_id}! Saving and returning race data.")
                 saveLastRaceTimeByCustId(cust_id, last_race_time, channel_id)
                 return last_race
+            else:
+                logging.info(f"Race already posted for cust_id={cust_id}, skipping.")
+                return None
         else:
+            logging.info(f"No races found for cust_id={cust_id}")
             return None
     except Exception as e:
         logging.exception(e)
-        logging.error("Error in 'getLastRaceIfNew'")
-        logging.error(cust_id, last_race)
-        print('iRacingApi main function error')
-        print(e)
+        logging.error(f"Error in 'getLastRaceIfNew' for cust_id={cust_id}")
+        print(f'iRacingApi getLastRaceIfNew error: {e}')
         return None
 
 def getLastRaceByCustId(cust_id):
     try:
+        logging.info(f"Getting last race for cust_id={cust_id}")
         ir_client = login()
+
+        if ir_client is None:
+            logging.error(f"Failed to login to iRacing API for cust_id={cust_id}")
+            return None
+
+        logging.info(f"Successfully logged in, fetching recent races for cust_id={cust_id}")
         lastTenRaces = ir_client.stats_member_recent_races(cust_id = cust_id)
-        
+
         if lastTenRaces is not None:
             races = lastTenRaces.get('races', [])
+            logging.info(f"Found {len(races)} races for cust_id={cust_id}")
             if len(races) > 0:
                 firstRace = races[0]
+                logging.info(f"Returning most recent race for cust_id={cust_id}")
                 return firstRace
 
-        print("No races found")
+        logging.info(f"No races found for cust_id={cust_id}")
         return None
     except Exception as e:
-        logging.error(e)
+        logging.exception(e)
+        logging.error(f"Error in getLastRaceByCustId for cust_id={cust_id}")
         return None
 
 def saveLastRaceTimeByCustId(cust_id, race_time, channel_id):
@@ -81,7 +163,11 @@ def raceAndDriverData(race, cust_id):
     allCarsData = ir_client.get_cars()
     car_name = list(filter(lambda obj: obj.get('car_id') == car_id, allCarsData))[0].get('car_name')
     session_start_time_unfiltered = race.get('session_start_time')
-    session_start_time = datetime.fromisoformat(session_start_time_unfiltered.replace('Z', '')).strftime('%Y-%m-%d %H:%M:%S GMT')
+    # Convert to Unix timestamp for Discord's dynamic timestamp format
+    dt = datetime.fromisoformat(session_start_time_unfiltered.replace('Z', '+00:00'))
+    unix_timestamp = int(dt.timestamp())
+    # Discord format: <t:timestamp:f> shows short date/time in user's local timezone
+    session_start_time = f"<t:{unix_timestamp}:f>"
     start_position = race.get('start_position')
     finish_position = race.get('finish_position')
     laps = race.get('laps')
@@ -90,7 +176,13 @@ def raceAndDriverData(race, cust_id):
     old_sr = race.get('old_sub_level') /100
     new_sr = race.get('new_sub_level') /100
     sr_change = round(new_sr - old_sr, 2)
-    sr_change_str = f"{'+' if sr_change > 0 else ''}{sr_change}"
+
+    # Extract license class letter from user_license (e.g., "A" from "Class A")
+    license_class = indv_race_data.user_license.split()[-1] if indv_race_data.user_license else "?"
+
+    # Format SR with change and current rating: +0.03 (A2.47)
+    sr_change_str = f"{'+' if sr_change > 0 else ''}{sr_change} ({license_class}{new_sr:.2f})"
+
     old_ir = race.get('oldi_rating')
     new_ir = race.get('newi_rating')
     ir_change = new_ir - old_ir
