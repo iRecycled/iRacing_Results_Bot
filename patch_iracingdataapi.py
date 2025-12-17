@@ -38,12 +38,20 @@ def patch_type_hints(file_path):
 
         original_content = content
 
+        # Fix specific incorrect type hint: List[Union[Dict, str], bool] -> Tuple[List[Union[Dict, str]], bool]
+        content = re.sub(
+            r'List\[Union\[Dict,\s*str\],\s*bool\]',
+            'Tuple[List[Union[Dict, str]], bool]',
+            content
+        )
+
         # Check if typing imports exist
         has_list_import = re.search(r'from typing import.*\bList\b', content)
         has_dict_import = re.search(r'from typing import.*\bDict\b', content)
+        has_tuple_import = re.search(r'from typing import.*\bTuple\b', content)
 
         # Add missing imports if needed
-        if not has_list_import or not has_dict_import:
+        if not has_list_import or not has_dict_import or not has_tuple_import:
             # Find the typing import line
             typing_import_match = re.search(r'^from typing import (.+)$', content, re.MULTILINE)
             if typing_import_match:
@@ -54,6 +62,8 @@ def patch_type_hints(file_path):
                     imports.append('List')
                 if not has_dict_import and 'Dict' not in imports:
                     imports.append('Dict')
+                if not has_tuple_import and 'Tuple' not in imports:
+                    imports.append('Tuple')
 
                 new_import = 'from typing import ' + ', '.join(imports)
                 content = content.replace(typing_import_match.group(0), new_import)
@@ -79,9 +89,11 @@ def patch_type_hints(file_path):
                     imports_needed.append('List')
                 if not has_dict_import:
                     imports_needed.append('Dict')
+                if not has_tuple_import:
+                    imports_needed.append('Tuple')
 
                 if imports_needed:
-                    lines.insert(insert_pos, f"from typing import {', '.join(imports_needed)}")
+                    lines.insert(insert_pos, "from typing import {0}".format(', '.join(imports_needed)))
                     content = '\n'.join(lines)
 
         # Replace list[...] with List[...]
