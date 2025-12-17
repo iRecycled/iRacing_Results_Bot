@@ -71,10 +71,10 @@ def login():
     try:
         # Return existing client if valid
         if ir_client is not None:
-            logging.info("Using existing irDataClient instance")
+            logging.debug("Reusing existing irDataClient instance")
             return ir_client
 
-        logging.info("Attempting to sign into iRacing with OAuth")
+        logging.info("No existing client found, creating new OAuth session")
         print("Signing into iRacing with OAuth.")
 
         # Get OAuth token
@@ -87,6 +87,7 @@ def login():
         # Initialize client with OAuth token
         ir_client = irDataClient(access_token=access_token)
         logging.info("Successfully initialized irDataClient with OAuth token")
+        print(f"OAuth client created and cached (id: {id(ir_client)})")
 
         return ir_client
     except Exception as e:
