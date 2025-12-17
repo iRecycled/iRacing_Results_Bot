@@ -370,15 +370,31 @@ def getSplitNumber(all_splits, subsession_id):
         return None
 
 def convert_time(time):
-    time_str = str(time)
-    minutes = int(time_str[:-4]) // 60
-    seconds = int(time_str[:-4]) % 60
-    milliseconds = int(time_str[-4:-1])
-    
-    if minutes == 0:
-        return "{:02d}.{:03d}".format(seconds, milliseconds)
-    
-    return "{}:{:02d}.{:03d}".format(minutes, seconds, milliseconds)
+    # Handle None, empty string, or invalid time values
+    if time is None or time == '' or time == 0:
+        return "N/A"
+
+    try:
+        time_str = str(time)
+        # Handle negative times (DNS/DNF cases)
+        if time_str.startswith('-'):
+            return "N/A"
+
+        # Need at least 4 characters for the format
+        if len(time_str) < 4:
+            return "N/A"
+
+        minutes = int(time_str[:-4]) // 60
+        seconds = int(time_str[:-4]) % 60
+        milliseconds = int(time_str[-4:-1])
+
+        if minutes == 0:
+            return "{:02d}.{:03d}".format(seconds, milliseconds)
+
+        return "{}:{:02d}.{:03d}".format(minutes, seconds, milliseconds)
+    except (ValueError, IndexError) as e:
+        logging.warning(f"convert_time: Invalid time value '{time}': {e}")
+        return "N/A"
 
 def getDriverLicense(license_level, allowed_licenses):
     for license_info in allowed_licenses:
