@@ -5,6 +5,7 @@ import logging
 import requests
 import time
 import json
+import re
 from datetime import datetime
 from dotenv import load_dotenv
 from collections import namedtuple
@@ -32,14 +33,70 @@ class iRacingClientManager:
     _instance = None
     _client = None
     _token = None
+    _rate_limit_until = 0  # Timestamp when we can retry
+    _rate_limit_reset = 0  # Timestamp when limit fully resets
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(iRacingClientManager, cls).__new__(cls)
         return cls._instance
 
+    def _parse_rate_limit_error(self, error_response):
+        """Parse the rate limit error to extract timing information"""
+        try:
+            if isinstance(error_response, str):
+                data = json.loads(error_response)
+            else:
+                data = error_response
+
+            error_desc = data.get('error_description', '')
+
+            # Parse "retry after X seconds" and "resets in Y seconds"
+            retry_match = re.search(r'retry after (\d+) seconds', error_desc)
+            reset_match = re.search(r'resets in (\d+) seconds', error_desc)
+
+            retry_after = int(retry_match.group(1)) if retry_match else 60
+            resets_in = int(reset_match.group(1)) if reset_match else 3600
+
+            return retry_after, resets_in
+        except (json.JSONDecodeError, AttributeError, ValueError) as e:
+            logging.warning(f"Failed to parse rate limit error: {e}")
+            return 60, 3600  # Default to 1 min retry, 1 hour reset
+
+    def _set_rate_limit(self, error_response):
+        """Set the rate limit timestamps based on error response"""
+        retry_after, resets_in = self._parse_rate_limit_error(error_response)
+        current_time = time.time()
+
+        # Use the full reset time to be safe, add 10 second buffer
+        self._rate_limit_until = current_time + resets_in + 10
+        self._rate_limit_reset = current_time + resets_in
+
+        logging.warning(
+            f"Rate limited! Blocking OAuth attempts for {resets_in} seconds "
+            f"({resets_in // 60} minutes). Will retry after {datetime.fromtimestamp(self._rate_limit_until).strftime('%H:%M:%S')}"
+        )
+        print(f"[RATE LIMIT] OAuth blocked for {resets_in // 60} minutes until {datetime.fromtimestamp(self._rate_limit_until).strftime('%H:%M:%S')}")
+
+    def is_rate_limited(self):
+        """Check if we're currently rate limited"""
+        if time.time() < self._rate_limit_until:
+            return True
+        return False
+
+    def get_rate_limit_remaining(self):
+        """Get seconds remaining on rate limit, or 0 if not limited"""
+        remaining = self._rate_limit_until - time.time()
+        return max(0, int(remaining))
+
     def get_oauth_token(self):
         """Get OAuth access token using password-limited grant with rate limit handling"""
+        # Check rate limit before attempting
+        if self.is_rate_limited():
+            remaining = self.get_rate_limit_remaining()
+            logging.warning(f"Skipping OAuth request - rate limited for {remaining} more seconds")
+            return None
+
         username = os.getenv('ir_username')
         password = os.getenv('ir_password')
 
@@ -64,17 +121,14 @@ class iRacingClientManager:
 
             if response.status_code == 200:
                 tokens = response.json()
+                logging.info("OAuth token obtained successfully")
                 return tokens.get('access_token')
             elif response.status_code == 401:
                 # Check if it's a rate limit error
                 try:
                     error_data = response.json()
-                    if "rate limit exceeded" in error_data.get("error_description", ""):
-                        retry_after = error_data.get("error_description", "").split("retry after ")[1].split(" seconds")[0] if "retry after" in error_data.get("error_description", "") else None
-                        resets_in = error_data.get("error_description", "").split("resets in ")[1].split(" seconds")[0] if "resets in" in error_data.get("error_description", "") else None
-
-                        logging.warning(f"Rate limit exceeded. Retry after {retry_after}s, resets in {resets_in}s")
-                        logging.warning("Bot will skip OAuth requests until rate limit resets")
+                    if "rate limit exceeded" in error_data.get("error_description", "").lower():
+                        self._set_rate_limit(response.text)
                         return None
                 except:
                     pass
@@ -91,7 +145,15 @@ class iRacingClientManager:
             return None
 
     def get_client(self):
-        """Get or create the iRacing client"""
+        """Get or create the iRacing client with rate limit protection"""
+        # Check rate limit FIRST before doing anything
+        if self.is_rate_limited():
+            remaining = self.get_rate_limit_remaining()
+            logging.warning(
+                f"Skipping login attempt - rate limited for {remaining} more seconds ({remaining // 60} minutes)"
+            )
+            return None
+
         if self._client is not None:
             logging.debug("Reusing existing irDataClient instance")
             return self._client
@@ -113,6 +175,12 @@ class iRacingClientManager:
 
         return self._client
 
+    def clear_client(self):
+        """Clear the cached client (useful if token expires)"""
+        self._client = None
+        self._token = None
+        logging.info("Cleared cached iRacing client")
+
 # Create singleton instance
 _client_manager = iRacingClientManager()
 
@@ -125,8 +193,21 @@ def login():
         logging.error("Error in login function")
         return None
 
+def is_rate_limited():
+    """Check if we're currently rate limited (for external use)"""
+    return _client_manager.is_rate_limited()
+
+def get_rate_limit_remaining():
+    """Get seconds remaining on rate limit (for external use)"""
+    return _client_manager.get_rate_limit_remaining()
+
 def getLastRaceIfNew(cust_id, channel_id):
     try:
+        # Skip if rate limited
+        if is_rate_limited():
+            logging.debug(f"Skipping getLastRaceIfNew for cust_id={cust_id} - rate limited")
+            return None
+
         logging.info(f"Checking for new race: cust_id={cust_id}, channel_id={channel_id}")
         last_race = getLastRaceByCustId(cust_id)
 

@@ -5,6 +5,7 @@ import iRacingApi as ira
 import iRacingLaps as laps
 import sqlCommands as sql
 import logging
+import asyncio
 
 from dotenv import load_dotenv
 
@@ -31,6 +32,23 @@ async def on_ready():
 @tasks.loop(seconds=60)
 async def startLoopForUpdates():
     try:
+        # Check rate limit status before starting
+        if ira.is_rate_limited():
+            remaining = ira.get_rate_limit_remaining()
+            minutes = remaining // 60
+            print(f"[RATE LIMITED] Pausing race checks for {remaining} seconds ({minutes} minutes)")
+            logging.warning(f"Rate limited - pausing loop for {remaining} seconds")
+
+            # Change loop interval to wake up when rate limit expires
+            startLoopForUpdates.change_interval(seconds=remaining + 5)  # +5 second buffer
+            return
+
+        # Reset to normal 60 second interval if we were rate limited before
+        if startLoopForUpdates.seconds != 60:
+            print(f"[RATE LIMIT EXPIRED] Resuming normal 60-second check interval")
+            logging.info("Rate limit expired, resuming normal interval")
+            startLoopForUpdates.change_interval(seconds=60)
+
         print("Running scheduled task to check races")
         logging.info("=== Starting scheduled race check ===")
         all_channel_ids = sql.get_all_channel_ids()
@@ -43,6 +61,18 @@ async def startLoopForUpdates():
 
                 for user_id in all_user_ids:
                     logging.info(f"Processing user_id={user_id} in channel_id={channel_id}")
+
+                    # Check rate limit before processing each user
+                    if ira.is_rate_limited():
+                        remaining = ira.get_rate_limit_remaining()
+                        minutes = remaining // 60
+                        print(f"[RATE LIMITED] Rate limit hit mid-check - pausing for {remaining} seconds ({minutes} minutes)")
+                        logging.warning(f"Rate limit hit during user processing - pausing for {remaining} seconds")
+
+                        # Change loop interval to wake up when rate limit expires
+                        startLoopForUpdates.change_interval(seconds=remaining + 5)  # +5 second buffer
+                        return
+
                     await getUserRaceDataAndPost(channel_id, user_id)
 
         print("Finished scheduled task, waiting...")
