@@ -69,20 +69,24 @@ def get_oauth_token():
 def login():
     global ir_client, access_token
     try:
-        if ir_client is None or (hasattr(ir_client, 'authenticated') and not ir_client.authenticated):
-            logging.info("Attempting to sign into iRacing with OAuth")
-            print("Signing into iRacing with OAuth.")
+        # Return existing client if valid
+        if ir_client is not None:
+            logging.info("Using existing irDataClient instance")
+            return ir_client
 
-            # Get OAuth token
-            access_token = get_oauth_token()
-            if not access_token:
-                logging.error("Failed to get OAuth access token")
-                return None
+        logging.info("Attempting to sign into iRacing with OAuth")
+        print("Signing into iRacing with OAuth.")
 
-            logging.info("OAuth token received, initializing irDataClient")
-            # Initialize client with OAuth token
-            ir_client = irDataClient(access_token=access_token)
-            logging.info("Successfully initialized irDataClient with OAuth token")
+        # Get OAuth token
+        access_token = get_oauth_token()
+        if not access_token:
+            logging.error("Failed to get OAuth access token")
+            return None
+
+        logging.info("OAuth token received, initializing irDataClient")
+        # Initialize client with OAuth token
+        ir_client = irDataClient(access_token=access_token)
+        logging.info("Successfully initialized irDataClient with OAuth token")
 
         return ir_client
     except Exception as e:
