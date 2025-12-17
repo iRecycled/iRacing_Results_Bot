@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Use INFO for debugging, WARNING for production
-LOG_LEVEL = logging.INFO if os.getenv('DEBUG_MODE', 'false').lower() == 'true' else logging.WARNING
+LOG_LEVEL = logging.INFO if os.getenv('DEBUG_MODE', 'true').lower() == 'true' else logging.WARNING
 logging.basicConfig(level=LOG_LEVEL, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
 TOKEN = os.getenv('DISCORD_TOKEN')
 
