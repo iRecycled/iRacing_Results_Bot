@@ -3,6 +3,8 @@ import sqlCommands as sql
 import os
 import logging
 import requests
+import time
+import json
 from datetime import datetime
 from dotenv import load_dotenv
 from collections import namedtuple
@@ -25,71 +27,99 @@ CLIENT_ID = os.getenv('IRACING_CLIENT_ID')
 CLIENT_SECRET = os.getenv('IRACING_CLIENT_SECRET')
 TOKEN_URL = "https://oauth.iracing.com/oauth2/token"
 
-ir_client = None
-access_token = None
+# Singleton class to manage iRacing client
+class iRacingClientManager:
+    _instance = None
+    _client = None
+    _token = None
 
-def get_oauth_token():
-    """
-    Get OAuth access token using password-limited grant
-    """
-    username = os.getenv('ir_username')
-    password = os.getenv('ir_password')
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(iRacingClientManager, cls).__new__(cls)
+        return cls._instance
 
-    if not username or not password or not CLIENT_SECRET:
-        logging.error("Missing OAuth credentials in environment variables")
-        return None
+    def get_oauth_token(self):
+        """Get OAuth access token using password-limited grant with rate limit handling"""
+        username = os.getenv('ir_username')
+        password = os.getenv('ir_password')
 
-    try:
-        masked_client_secret = mask_secret(CLIENT_SECRET, CLIENT_ID)
-        masked_password = mask_secret(password, username)
-
-        data = {
-            "grant_type": "password_limited",
-            "client_id": CLIENT_ID,
-            "client_secret": masked_client_secret,
-            "username": username,
-            "password": masked_password,
-            "scope": "iracing.auth"
-        }
-
-        response = requests.post(TOKEN_URL, data=data, timeout=20)
-
-        if response.status_code == 200:
-            tokens = response.json()
-            return tokens.get('access_token')
-        else:
-            logging.error(f"OAuth authentication failed: {response.status_code} - {response.text}")
+        if not username or not password or not CLIENT_SECRET:
+            logging.error("Missing OAuth credentials in environment variables")
             return None
 
-    except Exception as e:
-        logging.exception(e)
-        logging.error("Error getting OAuth token")
-        return None
+        try:
+            masked_client_secret = mask_secret(CLIENT_SECRET, CLIENT_ID)
+            masked_password = mask_secret(password, username)
 
-def login():
-    global ir_client, access_token
-    try:
-        # Return existing client if valid
-        if ir_client is not None:
+            data = {
+                "grant_type": "password_limited",
+                "client_id": CLIENT_ID,
+                "client_secret": masked_client_secret,
+                "username": username,
+                "password": masked_password,
+                "scope": "iracing.auth"
+            }
+
+            response = requests.post(TOKEN_URL, data=data, timeout=20)
+
+            if response.status_code == 200:
+                tokens = response.json()
+                return tokens.get('access_token')
+            elif response.status_code == 401:
+                # Check if it's a rate limit error
+                try:
+                    error_data = response.json()
+                    if "rate limit exceeded" in error_data.get("error_description", ""):
+                        retry_after = error_data.get("error_description", "").split("retry after ")[1].split(" seconds")[0] if "retry after" in error_data.get("error_description", "") else None
+                        resets_in = error_data.get("error_description", "").split("resets in ")[1].split(" seconds")[0] if "resets in" in error_data.get("error_description", "") else None
+
+                        logging.warning(f"Rate limit exceeded. Retry after {retry_after}s, resets in {resets_in}s")
+                        logging.warning("Bot will skip OAuth requests until rate limit resets")
+                        return None
+                except:
+                    pass
+
+                logging.error(f"OAuth authentication failed: {response.status_code} - {response.text}")
+                return None
+            else:
+                logging.error(f"OAuth authentication failed: {response.status_code} - {response.text}")
+                return None
+
+        except Exception as e:
+            logging.exception(e)
+            logging.error("Error getting OAuth token")
+            return None
+
+    def get_client(self):
+        """Get or create the iRacing client"""
+        if self._client is not None:
             logging.debug("Reusing existing irDataClient instance")
-            return ir_client
+            return self._client
 
         logging.info("No existing client found, creating new OAuth session")
         print("Signing into iRacing with OAuth.")
 
         # Get OAuth token
-        access_token = get_oauth_token()
-        if not access_token:
+        self._token = self.get_oauth_token()
+        if not self._token:
             logging.error("Failed to get OAuth access token")
             return None
 
         logging.info("OAuth token received, initializing irDataClient")
         # Initialize client with OAuth token
-        ir_client = irDataClient(access_token=access_token)
+        self._client = irDataClient(access_token=self._token)
         logging.info("Successfully initialized irDataClient with OAuth token")
-        print(f"OAuth client created and cached (id: {id(ir_client)})")
+        print(f"OAuth client created and cached")
 
-        return ir_client
+        return self._client
+
+# Create singleton instance
+_client_manager = iRacingClientManager()
+
+def login():
+    """Get the iRacing client from the singleton manager"""
+    try:
+        return _client_manager.get_client()
     except Exception as e:
         logging.exception(e)
         logging.error("Error in login function")
