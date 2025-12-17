@@ -41,14 +41,16 @@ python patch_iracingdataapi.py
 
 ### For cPanel/Shared Hosting
 
-After uploading your code to the server:
+After uploading your code to the server, activate your virtual environment first:
 ```bash
 cd ~/iRacing_Results_Bot
-source virtualenv/bin/activate  # or whatever your virtualenv path is
+source virtualenv/iRacing_Results_Bot/3.8/bin/activate
 pip install -r requirements.txt
-python patch_iracingdataapi.py
+python patch_iracingdataapi.py  # Now python points to Python 3.8 in virtualenv
 python bot.py
 ```
+
+**Important:** Always activate the virtual environment first! Without it, `python` points to Python 2.x on your server.
 
 ## Troubleshooting
 

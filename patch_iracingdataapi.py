@@ -7,6 +7,10 @@ compatible type hints (List[] instead of list[], Dict[] instead of dict[]).
 
 Run this after installing dependencies:
     pip install -r requirements.txt
+    python3 patch_iracingdataapi.py
+
+Or with your virtual environment activated:
+    source virtualenv/iRacing_Results_Bot/3.8/bin/activate
     python patch_iracingdataapi.py
 """
 
