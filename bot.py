@@ -125,11 +125,28 @@ async def getUserRaceDataAndPost(channel_id, user_id):
 async def addUser(ctx, arg):
     channel_id = ctx.channel.id  # Get the channel ID where the command was sent
     if channel_id:
+        # Validate cust_id is a number
+        try:
+            cust_id = int(arg)
+            if cust_id <= 0:
+                await ctx.send(f"Invalid User ID: {arg}. Please provide a positive number.")
+                return
+        except ValueError:
+            await ctx.send(f"Invalid User ID: {arg}. Please provide a valid number.")
+            return
+
+        # Check if rate limited
+        if ira.is_rate_limited():
+            remaining = ira.get_rate_limit_remaining()
+            minutes = remaining // 60
+            await ctx.send(f"Bot is currently rate limited. Please try again in {minutes} minutes.")
+            return
+
         driver_name = ira.getDriverName(arg)
         if driver_name and sql.save_user_channel(arg, channel_id, driver_name):
             await ctx.send(f"Driver: {driver_name} ({arg}) has been added")
         else:
-            await ctx.send(f"Failed to add User Id {arg}.")
+            await ctx.send(f"Failed to add User ID {arg}. Driver may not exist or API is unavailable.")
 
 @bot.command()
 async def removeUser(ctx, arg):

@@ -1,6 +1,7 @@
 from iracingdataapi.client import irDataClient
 import iRacingApi as ira
 import logging
+from json.decoder import JSONDecodeError
 
 logging.basicConfig(level=logging.INFO, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
 import matplotlib.pyplot as plt
@@ -12,9 +13,24 @@ def getLapsChart(last_race, highlighted_cust_id):
         subsession_id = last_race.get('subsession_id')
         lap_data = ir_client.result_lap_chart_data(subsession_id, 0)
 
+        # Get the full race results to get finishing positions
+        race_result = ir_client.result(subsession_id)
+
+        # Extract finishing positions for each driver
+        finishing_positions = {}
+        all_race_type_results = race_result.get('session_results', [])
+        race_session = [session for session in all_race_type_results if session.get('simsession_name') == "RACE"]
+        if race_session:
+            results = race_session[0].get('results', [])
+            for result in results:
+                cust_id = result.get('cust_id')
+                finish_pos = result.get('finish_position')
+                if cust_id and finish_pos is not None:
+                    finishing_positions[cust_id] = finish_pos
+
         race_laps_per_driver = {}
         leader_lap_numbers = []  # To store lap numbers of the race leader
-        
+
         for driver in lap_data:
             cust_id = driver['cust_id']
             lap_num = driver['lap_number']
@@ -33,6 +49,9 @@ def getLapsChart(last_race, highlighted_cust_id):
             if lap_position == 1 and lap_num not in leader_lap_numbers:
                 leader_lap_numbers.append(int(lap_num))
 
+        # Determine the maximum lap number (race end)
+        max_lap = max(leader_lap_numbers) if leader_lap_numbers else 0
+
         background_color = '#40444B'  # Slightly lighter than Discord's dark mode
         plt.figure(figsize=(10, 6), facecolor=background_color)
 
@@ -40,10 +59,19 @@ def getLapsChart(last_race, highlighted_cust_id):
             lap_numbers = data['lap_numbers']
             lap_positions = data['lap_positions']
 
-            if int(cust_id) == int(highlighted_cust_id):
-                plt.plot(lap_numbers, lap_positions, linestyle='-', linewidth=5, label=f'Cust ID: {cust_id}')
+            # If driver didn't complete all laps, add a drop to their finishing position
+            if lap_numbers and lap_numbers[-1] < max_lap and cust_id in finishing_positions:
+                # Add the final position at the end of the race
+                lap_numbers_extended = lap_numbers + [max_lap]
+                lap_positions_extended = lap_positions + [finishing_positions[cust_id]]
             else:
-                plt.plot(lap_numbers, lap_positions, linestyle='-', linewidth=1.5, label=f'Cust ID: {cust_id}')
+                lap_numbers_extended = lap_numbers
+                lap_positions_extended = lap_positions
+
+            if int(cust_id) == int(highlighted_cust_id):
+                plt.plot(lap_numbers_extended, lap_positions_extended, linestyle='-', linewidth=5, label=f'Cust ID: {cust_id}')
+            else:
+                plt.plot(lap_numbers_extended, lap_positions_extended, linestyle='-', linewidth=1.5, label=f'Cust ID: {cust_id}')
 
         plt.title('{}'.format(race_title), color="white")
         plt.xlabel('Lap Number', color="white")
@@ -76,8 +104,17 @@ def getLapsChart(last_race, highlighted_cust_id):
         plt.tight_layout()
 
         plt.savefig('race_plot.png', facecolor="#40444B", bbox_inches='tight')
+        plt.close()  # Close figure to prevent memory leaks
         return True
+    except JSONDecodeError as e:
+        logging.error(f"JSONDecodeError in getLapsChart: API returned empty/invalid response - {str(e)}")
+        logging.warning("Clearing cached client due to JSONDecodeError in lap chart generation")
+        ira._client_manager.clear_client()
+        plt.close()  # Clean up any partial figure
+        return False
     except Exception as e:
         logging.error(f"Exception in iRacingLaps: {e}")
+        logging.exception(e)
         print(f"Exception: {e}")
+        plt.close()  # Clean up any partial figure
         return False

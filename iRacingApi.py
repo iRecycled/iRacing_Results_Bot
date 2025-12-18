@@ -1,4 +1,5 @@
 from iracingdataapi.client import irDataClient
+from iracingdataapi.exceptions import AccessTokenInvalid
 import sqlCommands as sql
 import os
 import logging
@@ -10,6 +11,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from collections import namedtuple
 from iracing_oauth import mask_secret
+from json.decoder import JSONDecodeError
 
 load_dotenv()
 # Use INFO for debugging, WARNING for production
@@ -184,6 +186,39 @@ class iRacingClientManager:
 # Create singleton instance
 _client_manager = iRacingClientManager()
 
+# Car data cache (cars rarely change, so cache them)
+_cars_cache = None
+_cars_cache_time = 0
+CARS_CACHE_DURATION = 3600  # Cache for 1 hour
+
+def get_cached_cars():
+    """Get car data with caching to reduce API calls"""
+    global _cars_cache, _cars_cache_time
+
+    current_time = time.time()
+
+    # Return cached data if still valid
+    if _cars_cache is not None and (current_time - _cars_cache_time) < CARS_CACHE_DURATION:
+        logging.debug("Using cached car data")
+        return _cars_cache
+
+    # Fetch fresh data
+    try:
+        ir_client = login()
+        if ir_client is None:
+            logging.error("Failed to login when fetching car data")
+            # Return stale cache if available
+            return _cars_cache if _cars_cache is not None else []
+
+        logging.info("Fetching fresh car data from API")
+        _cars_cache = ir_client.get_cars()
+        _cars_cache_time = current_time
+        return _cars_cache
+    except Exception as e:
+        logging.error(f"Error fetching car data: {e}")
+        # Return stale cache if available
+        return _cars_cache if _cars_cache is not None else []
+
 def login():
     """Get the iRacing client from the singleton manager"""
     try:
@@ -231,9 +266,12 @@ def getLastRaceIfNew(cust_id, channel_id):
         print(f'iRacingApi getLastRaceIfNew error: {e}')
         return None
 
-def getLastRaceByCustId(cust_id):
+def getLastRaceByCustId(cust_id, retry_count=0):
+    max_retries = 2
+    retry_delay = 3  # seconds
+
     try:
-        logging.info(f"Getting last race for cust_id={cust_id}")
+        logging.info(f"Getting last race for cust_id={cust_id} (attempt {retry_count + 1}/{max_retries + 1})")
         ir_client = login()
 
         if ir_client is None:
@@ -253,6 +291,33 @@ def getLastRaceByCustId(cust_id):
 
         logging.info(f"No races found for cust_id={cust_id}")
         return None
+    except AccessTokenInvalid:
+        # Handle expired/invalid token with a simple one-line log
+        logging.warning(f"Access token invalid for cust_id={cust_id} - clearing client and retrying")
+        _client_manager.clear_client()
+
+        # Retry if we haven't exceeded max retries
+        if retry_count < max_retries:
+            time.sleep(retry_delay)
+            return getLastRaceByCustId(cust_id, retry_count + 1)
+        else:
+            logging.error(f"Max retries ({max_retries}) exceeded for cust_id={cust_id} - token still invalid")
+            return None
+    except JSONDecodeError as e:
+        logging.error(f"JSONDecodeError for cust_id={cust_id}: API returned empty/invalid response - {str(e)}")
+
+        # Clear the client to force re-authentication on next attempt
+        logging.warning(f"Clearing cached client due to JSONDecodeError - likely expired token")
+        _client_manager.clear_client()
+
+        # Retry if we haven't exceeded max retries
+        if retry_count < max_retries:
+            logging.info(f"Retrying in {retry_delay} seconds... (attempt {retry_count + 2}/{max_retries + 1})")
+            time.sleep(retry_delay)
+            return getLastRaceByCustId(cust_id, retry_count + 1)
+        else:
+            logging.error(f"Max retries ({max_retries}) exceeded for cust_id={cust_id}")
+            return None
     except Exception as e:
         logging.exception(e)
         logging.error(f"Error in getLastRaceByCustId for cust_id={cust_id}")
@@ -269,14 +334,23 @@ def lastRaceTimeMatching(cust_id, race_time, channel_id):
     return saved_last_race_time == race_time
 
 def raceAndDriverData(race, cust_id):
+    # Check rate limit before making API calls
+    if is_rate_limited():
+        logging.warning(f"Skipping raceAndDriverData for cust_id={cust_id} - rate limited")
+        return None
+
     ir_client = login()
+    if ir_client is None:
+        logging.error(f"Failed to login in raceAndDriverData for cust_id={cust_id}")
+        return None
+
     subsession_id = race.get('subsession_id')
     indv_race_data = getSubsessionDataByUserId(subsession_id ,cust_id)
     display_name = sql.get_display_name(cust_id)
     series_name = race.get('series_name')
     series_id = race.get('series_id')
     car_id = race.get('car_id')
-    allCarsData = ir_client.get_cars()
+    allCarsData = get_cached_cars()
     car_name = list(filter(lambda obj: obj.get('car_id') == car_id, allCarsData))[0].get('car_name')
     session_start_time_unfiltered = race.get('session_start_time')
     # Convert to Unix timestamp for Discord's dynamic timestamp format
@@ -308,16 +382,25 @@ def raceAndDriverData(race, cust_id):
     return formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, ir_change_str, track_name, indv_race_data.split_number, indv_race_data.series_logo, indv_race_data.fastest_lap, indv_race_data.average_lap, indv_race_data.user_license, indv_race_data.sof,)
 
 def getDriverName(cust_id):
-    try :
+    try:
+        # Check rate limit before making API calls
+        if is_rate_limited():
+            logging.warning(f"Skipping getDriverName for cust_id={cust_id} - rate limited")
+            return None
+
         ir_client = login()
+        if ir_client is None:
+            logging.error(f"Failed to login in getDriverName for cust_id={cust_id}")
+            return None
+
         data = ir_client.member_profile(cust_id = cust_id)
         if data is None:
             return None
         driver_name = data.get('member_info').get('display_name')
         return driver_name
-    except Exception as e: 
+    except Exception as e:
         logging.exception(e)
-        print('exception hit: ' + e)
+        print(f'exception hit: {e}')
         return None
 
 SubsessionData = namedtuple("SubsessionData", ["split_number", "series_logo", "fastest_lap", "average_lap", "user_license", "sof"])
