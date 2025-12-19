@@ -6,6 +6,7 @@ import iRacingLaps as laps
 import sqlCommands as sql
 import logging
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
 
@@ -21,6 +22,9 @@ intents.message_content = True
 client = discord.Client(intents=intents, command_prefix="/")
 
 bot = commands.Bot(command_prefix="/", intents=intents, case_insensitive=True) # Set the command prefix as '/'
+
+# Thread pool for running blocking iRacing API calls
+executor = ThreadPoolExecutor(max_workers=3)
 @bot.event
 async def on_ready():
     print(f'We have logged in as {bot.user}')
@@ -83,11 +87,16 @@ async def startLoopForUpdates():
 
 async def getUserRaceDataAndPost(channel_id, user_id):
     logging.info(f"getUserRaceDataAndPost called for user_id={user_id}, channel_id={channel_id}")
-    last_race = ira.getLastRaceIfNew(user_id, channel_id)
+
+    # Run blocking API call in thread pool to avoid blocking event loop
+    loop = asyncio.get_event_loop()
+    last_race = await loop.run_in_executor(executor, ira.getLastRaceIfNew, user_id, channel_id)
 
     if last_race is not None:
         logging.info(f"New race found for user_id={user_id}, preparing message")
-        driver_race_result_msg = ira.raceAndDriverData(last_race, user_id)
+
+        # Run blocking API call in thread pool
+        driver_race_result_msg = await loop.run_in_executor(executor, ira.raceAndDriverData, last_race, user_id)
 
         # Check if race data was successfully retrieved
         if driver_race_result_msg is None:
@@ -108,7 +117,9 @@ async def getUserRaceDataAndPost(channel_id, user_id):
             await channel.send(driver_race_result_msg)
 
             logging.info(f"Generating lap chart for user_id={user_id}")
-            if laps.getLapsChart(last_race, user_id):
+            # Run blocking chart generation in thread pool
+            chart_success = await loop.run_in_executor(executor, laps.getLapsChart, last_race, user_id)
+            if chart_success:
                 with open('race_plot.png', 'rb') as pic:
                     await channel.send(file=discord.File(pic))
                 logging.info(f"Lap chart sent to channel {channel_id}")
@@ -147,7 +158,9 @@ async def addUser(ctx, arg):
             await ctx.send(f"Bot is currently rate limited. Please try again in {minutes} minutes.")
             return
 
-        driver_name = ira.getDriverName(arg)
+        # Run blocking API call in thread pool
+        loop = asyncio.get_event_loop()
+        driver_name = await loop.run_in_executor(executor, ira.getDriverName, arg)
         if driver_name and sql.save_user_channel(arg, channel_id, driver_name):
             await ctx.send(f"Driver: {driver_name} ({arg}) has been added")
         else:
