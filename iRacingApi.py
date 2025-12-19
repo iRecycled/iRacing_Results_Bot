@@ -297,6 +297,10 @@ def getLastRaceByCustId(cust_id):
 
         logging.info(f"No races found for cust_id={cust_id}")
         return None
+    except AccessTokenInvalid:
+        logging.warning(f"Access token invalid during API call for cust_id={cust_id} - clearing client")
+        _client_manager.clear_client()
+        return None
     except Exception as e:
         logging.exception(e)
         logging.error(f"Error in getLastRaceByCustId for cust_id={cust_id}")
@@ -326,6 +330,12 @@ def raceAndDriverData(race, cust_id):
 
         subsession_id = race.get('subsession_id')
         indv_race_data = getSubsessionDataByUserId(subsession_id ,cust_id)
+
+        # Check if subsession data retrieval failed
+        if indv_race_data is None:
+            logging.error(f"Failed to get subsession data for cust_id={cust_id}")
+            return None
+
         display_name = sql.get_display_name(cust_id)
         series_name = race.get('series_name')
         series_id = race.get('series_id')
@@ -367,6 +377,10 @@ def raceAndDriverData(race, cust_id):
         track_name = race.get('track').get('track_name')
 
         return formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, ir_change_str, track_name, indv_race_data.split_number, indv_race_data.series_logo, indv_race_data.fastest_lap, indv_race_data.average_lap, indv_race_data.user_license, indv_race_data.sof,)
+    except AccessTokenInvalid:
+        logging.warning(f"Access token invalid during API call in raceAndDriverData for cust_id={cust_id} - clearing client")
+        _client_manager.clear_client()
+        return None
     except Exception as e:
         logging.exception(e)
         logging.error(f"Error in raceAndDriverData for cust_id={cust_id}")
@@ -389,6 +403,10 @@ def getDriverName(cust_id):
             return None
         driver_name = data.get('member_info').get('display_name')
         return driver_name
+    except AccessTokenInvalid:
+        logging.warning(f"Access token invalid during API call in getDriverName for cust_id={cust_id} - clearing client")
+        _client_manager.clear_client()
+        return None
     except Exception as e:
         logging.exception(e)
         print(f'exception hit: {e}')
@@ -399,6 +417,10 @@ SubsessionData = namedtuple("SubsessionData", ["split_number", "series_logo", "f
 def getSubsessionDataByUserId(subsession_id, user_id):
     try:
         ir_client = login()
+        if ir_client is None:
+            logging.error("Failed to login in getSubsessionDataByUserId")
+            return None
+
         race_result = ir_client.result(subsession_id)
         licenses = race_result.get('allowed_licenses')
         all_splits = race_result.get('associated_subsession_ids')
@@ -425,13 +447,17 @@ def getSubsessionDataByUserId(subsession_id, user_id):
                     sof
                 )
                 return data
+        return None
+    except AccessTokenInvalid:
+        logging.warning(f"Access token invalid during API call in getSubsessionDataByUserId for subsession_id={subsession_id} - clearing client")
+        _client_manager.clear_client()
+        return None
     except Exception as e:
         logging.exception(e)
         logging.error("Error in getSubsessionDataByUserId")
         print('getSubsessionDataByUserId exception')
         print(e)
         return None
-    return None
 
 def getSplitNumber(all_splits, subsession_id):
     try:

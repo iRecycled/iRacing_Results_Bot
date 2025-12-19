@@ -1,4 +1,5 @@
 from iracingdataapi.client import irDataClient
+from iracingdataapi.exceptions import AccessTokenInvalid
 import iRacingApi as ira
 import logging
 
@@ -178,6 +179,11 @@ def getLapsChart(last_race, highlighted_cust_id):
         plt.savefig('race_plot.png', facecolor=BACKGROUND_COLOR, bbox_inches='tight')
         plt.close()  # Close figure to prevent memory leaks
         return True
+    except AccessTokenInvalid:
+        logging.warning("Access token invalid during API call in getLapsChart - clearing client")
+        ira._client_manager.clear_client()
+        plt.close()  # Clean up any partial figure
+        return False
     except Exception as e:
         logging.error(f"Exception in iRacingLaps: {e}")
         logging.exception(e)
