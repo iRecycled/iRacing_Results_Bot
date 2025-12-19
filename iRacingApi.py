@@ -220,9 +220,18 @@ def get_cached_cars():
         return _cars_cache if _cars_cache is not None else []
 
 def login():
-    """Get the iRacing client from the singleton manager"""
+    """Get the iRacing client from the singleton manager with automatic token refresh"""
     try:
         return _client_manager.get_client()
+    except AccessTokenInvalid:
+        # Token expired - clear and retry once
+        logging.warning("Access token invalid during login - clearing client and retrying")
+        _client_manager.clear_client()
+        try:
+            return _client_manager.get_client()
+        except Exception as retry_error:
+            logging.error(f"Failed to get client after token refresh: {retry_error}")
+            return None
     except Exception as e:
         logging.exception(e)
         logging.error("Error in login function")
@@ -266,12 +275,9 @@ def getLastRaceIfNew(cust_id, channel_id):
         print(f'iRacingApi getLastRaceIfNew error: {e}')
         return None
 
-def getLastRaceByCustId(cust_id, retry_count=0):
-    max_retries = 2
-    retry_delay = 3  # seconds
-
+def getLastRaceByCustId(cust_id):
     try:
-        logging.info(f"Getting last race for cust_id={cust_id} (attempt {retry_count + 1}/{max_retries + 1})")
+        logging.info(f"Getting last race for cust_id={cust_id}")
         ir_client = login()
 
         if ir_client is None:
@@ -291,33 +297,6 @@ def getLastRaceByCustId(cust_id, retry_count=0):
 
         logging.info(f"No races found for cust_id={cust_id}")
         return None
-    except AccessTokenInvalid:
-        # Handle expired/invalid token with a simple one-line log
-        logging.warning(f"Access token invalid for cust_id={cust_id} - clearing client and retrying")
-        _client_manager.clear_client()
-
-        # Retry if we haven't exceeded max retries
-        if retry_count < max_retries:
-            time.sleep(retry_delay)
-            return getLastRaceByCustId(cust_id, retry_count + 1)
-        else:
-            logging.error(f"Max retries ({max_retries}) exceeded for cust_id={cust_id} - token still invalid")
-            return None
-    except JSONDecodeError as e:
-        logging.error(f"JSONDecodeError for cust_id={cust_id}: API returned empty/invalid response - {str(e)}")
-
-        # Clear the client to force re-authentication on next attempt
-        logging.warning(f"Clearing cached client due to JSONDecodeError - likely expired token")
-        _client_manager.clear_client()
-
-        # Retry if we haven't exceeded max retries
-        if retry_count < max_retries:
-            logging.info(f"Retrying in {retry_delay} seconds... (attempt {retry_count + 2}/{max_retries + 1})")
-            time.sleep(retry_delay)
-            return getLastRaceByCustId(cust_id, retry_count + 1)
-        else:
-            logging.error(f"Max retries ({max_retries}) exceeded for cust_id={cust_id}")
-            return None
     except Exception as e:
         logging.exception(e)
         logging.error(f"Error in getLastRaceByCustId for cust_id={cust_id}")
@@ -334,52 +313,64 @@ def lastRaceTimeMatching(cust_id, race_time, channel_id):
     return saved_last_race_time == race_time
 
 def raceAndDriverData(race, cust_id):
-    # Check rate limit before making API calls
-    if is_rate_limited():
-        logging.warning(f"Skipping raceAndDriverData for cust_id={cust_id} - rate limited")
+    try:
+        # Check rate limit before making API calls
+        if is_rate_limited():
+            logging.warning(f"Skipping raceAndDriverData for cust_id={cust_id} - rate limited")
+            return None
+
+        ir_client = login()
+        if ir_client is None:
+            logging.error(f"Failed to login in raceAndDriverData for cust_id={cust_id}")
+            return None
+
+        subsession_id = race.get('subsession_id')
+        indv_race_data = getSubsessionDataByUserId(subsession_id ,cust_id)
+        display_name = sql.get_display_name(cust_id)
+        series_name = race.get('series_name')
+        series_id = race.get('series_id')
+        car_id = race.get('car_id')
+        allCarsData = get_cached_cars()
+
+        # Safe car lookup with error handling
+        car_matches = list(filter(lambda obj: obj.get('car_id') == car_id, allCarsData))
+        if not car_matches:
+            logging.error(f"Car with ID {car_id} not found in car data for cust_id={cust_id}")
+            return None
+        car_name = car_matches[0].get('car_name')
+
+        session_start_time_unfiltered = race.get('session_start_time')
+        # Convert to Unix timestamp for Discord's dynamic timestamp format
+        dt = datetime.fromisoformat(session_start_time_unfiltered.replace('Z', '+00:00'))
+        unix_timestamp = int(dt.timestamp())
+        # Discord format: <t:timestamp:f> shows short date/time in user's local timezone
+        session_start_time = f"<t:{unix_timestamp}:f>"
+        start_position = race.get('start_position')
+        finish_position = race.get('finish_position')
+        laps = race.get('laps')
+        incidents = race.get('incidents')
+        points = race.get('points')
+        old_sr = race.get('old_sub_level') /100
+        new_sr = race.get('new_sub_level') /100
+        sr_change = round(new_sr - old_sr, 2)
+
+        # Extract license class letter from user_license (e.g., "A" from "Class A")
+        license_class = indv_race_data.user_license.split()[-1] if indv_race_data.user_license else "?"
+
+        # Format SR with change and current rating: +0.03 (A2.47)
+        sr_change_str = f"{'+' if sr_change > 0 else ''}{sr_change} ({license_class}{new_sr:.2f})"
+
+        old_ir = race.get('oldi_rating')
+        new_ir = race.get('newi_rating')
+        ir_change = new_ir - old_ir
+        ir_change_str = f"{'+' if ir_change > 0 else ''}{ir_change} ({new_ir})"
+        track_name = race.get('track').get('track_name')
+
+        return formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, ir_change_str, track_name, indv_race_data.split_number, indv_race_data.series_logo, indv_race_data.fastest_lap, indv_race_data.average_lap, indv_race_data.user_license, indv_race_data.sof,)
+    except Exception as e:
+        logging.exception(e)
+        logging.error(f"Error in raceAndDriverData for cust_id={cust_id}")
         return None
-
-    ir_client = login()
-    if ir_client is None:
-        logging.error(f"Failed to login in raceAndDriverData for cust_id={cust_id}")
-        return None
-
-    subsession_id = race.get('subsession_id')
-    indv_race_data = getSubsessionDataByUserId(subsession_id ,cust_id)
-    display_name = sql.get_display_name(cust_id)
-    series_name = race.get('series_name')
-    series_id = race.get('series_id')
-    car_id = race.get('car_id')
-    allCarsData = get_cached_cars()
-    car_name = list(filter(lambda obj: obj.get('car_id') == car_id, allCarsData))[0].get('car_name')
-    session_start_time_unfiltered = race.get('session_start_time')
-    # Convert to Unix timestamp for Discord's dynamic timestamp format
-    dt = datetime.fromisoformat(session_start_time_unfiltered.replace('Z', '+00:00'))
-    unix_timestamp = int(dt.timestamp())
-    # Discord format: <t:timestamp:f> shows short date/time in user's local timezone
-    session_start_time = f"<t:{unix_timestamp}:f>"
-    start_position = race.get('start_position')
-    finish_position = race.get('finish_position')
-    laps = race.get('laps')
-    incidents = race.get('incidents')
-    points = race.get('points')
-    old_sr = race.get('old_sub_level') /100
-    new_sr = race.get('new_sub_level') /100
-    sr_change = round(new_sr - old_sr, 2)
-
-    # Extract license class letter from user_license (e.g., "A" from "Class A")
-    license_class = indv_race_data.user_license.split()[-1] if indv_race_data.user_license else "?"
-
-    # Format SR with change and current rating: +0.03 (A2.47)
-    sr_change_str = f"{'+' if sr_change > 0 else ''}{sr_change} ({license_class}{new_sr:.2f})"
-
-    old_ir = race.get('oldi_rating')
-    new_ir = race.get('newi_rating')
-    ir_change = new_ir - old_ir
-    ir_change_str = f"{'+' if ir_change > 0 else ''}{ir_change} ({new_ir})"
-    track_name = race.get('track').get('track_name')
-
-    return formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, ir_change_str, track_name, indv_race_data.split_number, indv_race_data.series_logo, indv_race_data.fastest_lap, indv_race_data.average_lap, indv_race_data.user_license, indv_race_data.sof,)
 
 def getDriverName(cust_id):
     try:

@@ -89,6 +89,11 @@ async def getUserRaceDataAndPost(channel_id, user_id):
         logging.info(f"New race found for user_id={user_id}, preparing message")
         driver_race_result_msg = ira.raceAndDriverData(last_race, user_id)
 
+        # Check if race data was successfully retrieved
+        if driver_race_result_msg is None:
+            logging.warning(f"Failed to get race data for user_id={user_id}, skipping message send")
+            return
+
         print(f"Attempting to send message to channel_id: {channel_id}")
         logging.info(f"Attempting to send message to channel_id={channel_id}")
 
