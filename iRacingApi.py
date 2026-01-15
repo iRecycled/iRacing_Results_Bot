@@ -12,11 +12,11 @@ from dotenv import load_dotenv
 from collections import namedtuple
 from iracing_oauth import mask_secret
 from json.decoder import JSONDecodeError
+import logging_config
 
 load_dotenv()
-# Use INFO for debugging, WARNING for production
-LOG_LEVEL = logging.INFO if os.getenv('DEBUG_MODE', 'false').lower() == 'true' else logging.WARNING
-logging.basicConfig(level=LOG_LEVEL, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+# Setup rotating file handler logging
+logging_config.setup_logging()
 raceAndDriverObj = namedtuple('raceAndDriverData', [
     'display_name', 'series_name', 'series_id', 'car_name', 'session_start_time',
     'start_position', 'finish_position', 'laps', 'incidents', 'points',
@@ -62,7 +62,7 @@ class iRacingClientManager:
 
             return retry_after, resets_in
         except (json.JSONDecodeError, AttributeError, ValueError) as e:
-            logging.warning(f"Failed to parse rate limit error: {e}")
+            logging.info(f"Failed to parse rate limit error: {e}")
             return 60, 3600  # Default to 1 min retry, 1 hour reset
 
     def _set_rate_limit(self, error_response):
@@ -74,7 +74,7 @@ class iRacingClientManager:
         self._rate_limit_until = current_time + resets_in + 10
         self._rate_limit_reset = current_time + resets_in
 
-        logging.warning(
+        logging.info(
             f"Rate limited! Blocking OAuth attempts for {resets_in} seconds "
             f"({resets_in // 60} minutes). Will retry after {datetime.fromtimestamp(self._rate_limit_until).strftime('%H:%M:%S')}"
         )
@@ -96,7 +96,7 @@ class iRacingClientManager:
         # Check rate limit before attempting
         if self.is_rate_limited():
             remaining = self.get_rate_limit_remaining()
-            logging.warning(f"Skipping OAuth request - rate limited for {remaining} more seconds")
+            logging.info(f"Skipping OAuth request - rate limited for {remaining} more seconds")
             return None
 
         username = os.getenv('ir_username')
@@ -151,7 +151,7 @@ class iRacingClientManager:
         # Check rate limit FIRST before doing anything
         if self.is_rate_limited():
             remaining = self.get_rate_limit_remaining()
-            logging.warning(
+            logging.info(
                 f"Skipping login attempt - rate limited for {remaining} more seconds ({remaining // 60} minutes)"
             )
             return None
@@ -225,7 +225,7 @@ def login():
         return _client_manager.get_client()
     except AccessTokenInvalid:
         # Token expired - clear and retry once
-        logging.warning("Access token invalid during login - clearing client and retrying")
+        logging.debug("Access token invalid during login - clearing client and retrying")
         _client_manager.clear_client()
         try:
             return _client_manager.get_client()
@@ -298,7 +298,7 @@ def getLastRaceByCustId(cust_id):
         logging.info(f"No races found for cust_id={cust_id}")
         return None
     except AccessTokenInvalid:
-        logging.warning(f"Access token invalid during API call for cust_id={cust_id} - clearing client")
+        logging.debug(f"Access token invalid during API call for cust_id={cust_id} - clearing client")
         _client_manager.clear_client()
         return None
     except Exception as e:
@@ -320,7 +320,7 @@ def raceAndDriverData(race, cust_id):
     try:
         # Check rate limit before making API calls
         if is_rate_limited():
-            logging.warning(f"Skipping raceAndDriverData for cust_id={cust_id} - rate limited")
+            logging.info(f"Skipping raceAndDriverData for cust_id={cust_id} - rate limited")
             return None
 
         ir_client = login()
@@ -378,7 +378,7 @@ def raceAndDriverData(race, cust_id):
 
         return formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, ir_change_str, track_name, indv_race_data.split_number, indv_race_data.series_logo, indv_race_data.fastest_lap, indv_race_data.average_lap, indv_race_data.user_license, indv_race_data.sof,)
     except AccessTokenInvalid:
-        logging.warning(f"Access token invalid during API call in raceAndDriverData for cust_id={cust_id} - clearing client")
+        logging.debug(f"Access token invalid during API call in raceAndDriverData for cust_id={cust_id} - clearing client")
         _client_manager.clear_client()
         return None
     except Exception as e:
@@ -390,7 +390,7 @@ def getDriverName(cust_id):
     try:
         # Check rate limit before making API calls
         if is_rate_limited():
-            logging.warning(f"Skipping getDriverName for cust_id={cust_id} - rate limited")
+            logging.info(f"Skipping getDriverName for cust_id={cust_id} - rate limited")
             return None
 
         ir_client = login()
@@ -404,7 +404,7 @@ def getDriverName(cust_id):
         driver_name = data.get('member_info').get('display_name')
         return driver_name
     except AccessTokenInvalid:
-        logging.warning(f"Access token invalid during API call in getDriverName for cust_id={cust_id} - clearing client")
+        logging.debug(f"Access token invalid during API call in getDriverName for cust_id={cust_id} - clearing client")
         _client_manager.clear_client()
         return None
     except Exception as e:
@@ -449,7 +449,7 @@ def getSubsessionDataByUserId(subsession_id, user_id):
                 return data
         return None
     except AccessTokenInvalid:
-        logging.warning(f"Access token invalid during API call in getSubsessionDataByUserId for subsession_id={subsession_id} - clearing client")
+        logging.debug(f"Access token invalid during API call in getSubsessionDataByUserId for subsession_id={subsession_id} - clearing client")
         _client_manager.clear_client()
         return None
     except Exception as e:
@@ -493,7 +493,7 @@ def convert_time(time):
 
         return "{}:{:02d}.{:03d}".format(minutes, seconds, milliseconds)
     except (ValueError, IndexError) as e:
-        logging.warning(f"convert_time: Invalid time value '{time}': {e}")
+        logging.debug(f"convert_time: Invalid time value '{time}': {e}")
         return "N/A"
 
 def getDriverLicense(license_level, allowed_licenses):

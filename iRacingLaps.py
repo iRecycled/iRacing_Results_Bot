@@ -2,9 +2,11 @@ from iracingdataapi.client import irDataClient
 from iracingdataapi.exceptions import AccessTokenInvalid
 import iRacingApi as ira
 import logging
-
-logging.basicConfig(level=logging.INFO, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+import logging_config
 import matplotlib.pyplot as plt
+
+# Setup rotating file handler logging
+logging_config.setup_logging()
 
 # Chart styling constants
 BACKGROUND_COLOR = '#40444B'  # Slightly lighter than Discord's dark mode
@@ -180,7 +182,7 @@ def getLapsChart(last_race, highlighted_cust_id):
         plt.close()  # Close figure to prevent memory leaks
         return True
     except AccessTokenInvalid:
-        logging.warning("Access token invalid during API call in getLapsChart - clearing client")
+        logging.debug("Access token invalid during API call in getLapsChart - clearing client")
         ira._client_manager.clear_client()
         plt.close()  # Clean up any partial figure
         return False

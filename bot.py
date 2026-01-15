@@ -7,14 +7,14 @@ import sqlCommands as sql
 import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import logging_config
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Use INFO for debugging, WARNING for production
-LOG_LEVEL = logging.INFO if os.getenv('DEBUG_MODE', 'true').lower() == 'true' else logging.WARNING
-logging.basicConfig(level=LOG_LEVEL, filename='bot.log', filemode='a', format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+# Setup rotating file handler logging
+logging_config.setup_logging()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 intents = discord.Intents.default()
@@ -28,7 +28,7 @@ executor = ThreadPoolExecutor(max_workers=3)
 @bot.event
 async def on_ready():
     print(f'We have logged in as {bot.user}')
-    logging.error(f'logged in as {bot.user}')
+    logging.info(f'logged in as {bot.user}')
     sql.init()
     #sql.delete_all_records()
     startLoopForUpdates.start()
@@ -41,7 +41,7 @@ async def startLoopForUpdates():
             remaining = ira.get_rate_limit_remaining()
             minutes = remaining // 60
             print(f"[RATE LIMITED] Pausing race checks for {remaining} seconds ({minutes} minutes)")
-            logging.warning(f"Rate limited - pausing loop for {remaining} seconds")
+            logging.info(f"Rate limited - pausing loop for {remaining} seconds")
 
             # Change loop interval to wake up when rate limit expires
             startLoopForUpdates.change_interval(seconds=remaining + 5)  # +5 second buffer
@@ -71,7 +71,7 @@ async def startLoopForUpdates():
                         remaining = ira.get_rate_limit_remaining()
                         minutes = remaining // 60
                         print(f"[RATE LIMITED] Rate limit hit mid-check - pausing for {remaining} seconds ({minutes} minutes)")
-                        logging.warning(f"Rate limit hit during user processing - pausing for {remaining} seconds")
+                        logging.info(f"Rate limit hit during user processing - pausing for {remaining} seconds")
 
                         # Change loop interval to wake up when rate limit expires
                         startLoopForUpdates.change_interval(seconds=remaining + 5)  # +5 second buffer
