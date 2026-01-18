@@ -175,4 +175,13 @@ async def removeUser(ctx, arg):
         else:
             await ctx.send(f"Failed to remove User Id {arg}.")
 
+# @bot.command()
+# async def test(ctx):
+#     channel_id = ctx.channel.id  # Get the channel ID where the command was sent
+#     if channel_id:
+#         # Run blocking API call in thread pool
+#         loop = asyncio.get_event_loop()
+#         result = await loop.run_in_executor(executor, ira.test_api_request)
+#         await ctx.send(result) 
+
 bot.run(TOKEN)

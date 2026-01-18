@@ -7,3 +7,4 @@ race_plot.png
 __pycache__/*
 *.log
 /.claude/
+bot.log
