@@ -8,6 +8,7 @@ import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import logging_config
+from rateLimit import rate_limit_handler
 
 from dotenv import load_dotenv
 
@@ -41,23 +42,6 @@ async def on_ready():
 @tasks.loop(seconds=60)
 async def startLoopForUpdates():
     try:
-        # Check rate limit status before starting
-        if irApi.is_rate_limited():
-            remaining = irApi.get_rate_limit_remaining()
-            minutes = remaining // 60
-            print(f"[RATE LIMITED] Pausing race checks for {remaining} seconds ({minutes} minutes)")
-            logging.info(f"Rate limited - pausing loop for {remaining} seconds")
-
-            # Change loop interval to wake up when rate limit expires
-            startLoopForUpdates.change_interval(seconds=remaining + 5)  # +5 second buffer
-            return
-
-        # Reset to normal 60 second interval if we were rate limited before
-        if startLoopForUpdates.seconds != 60:
-            print("[RATE LIMIT EXPIRED] Resuming normal 60-second check interval")
-            logging.info("Rate limit expired, resuming normal interval")
-            startLoopForUpdates.change_interval(seconds=60)
-
         print("Running scheduled task to check races")
         logging.info("=== Starting scheduled race check ===")
         all_channel_ids = sql.get_all_channel_ids()
@@ -71,21 +55,6 @@ async def startLoopForUpdates():
 
                 for user_id in all_user_ids:
                     logging.info(f"Processing user_id={user_id} in channel_id={channel_id}")
-
-                    # Check rate limit before processing each user
-                    if irApi.is_rate_limited():
-                        remaining = irApi.get_rate_limit_remaining()
-                        minutes = remaining // 60
-                        msg = f"[RATE LIMITED] Rate limit hit mid-check - pausing for {remaining} seconds ({minutes} minutes)"
-                        print(msg)
-                        logging.info(msg)
-
-                        # Change loop interval to wake up when rate limit expires
-                        startLoopForUpdates.change_interval(
-                            seconds=remaining + 5
-                        )  # +5 second buffer
-                        return
-
                     await getUserRaceDataAndPost(channel_id, user_id)
 
         print("Finished scheduled task, waiting...")
@@ -95,6 +64,7 @@ async def startLoopForUpdates():
         logging.error("Error in startLoopForUpdates")
 
 
+@rate_limit_handler
 async def getUserRaceDataAndPost(channel_id, user_id):
     logging.info(f"getUserRaceDataAndPost called for user_id={user_id}, channel_id={channel_id}")
 
@@ -152,6 +122,7 @@ async def getUserRaceDataAndPost(channel_id, user_id):
 
 
 @bot.command()
+@rate_limit_handler
 async def addUser(ctx, arg):
     channel_id = ctx.channel.id  # Get the channel ID where the command was sent
     if channel_id:
@@ -163,13 +134,6 @@ async def addUser(ctx, arg):
                 return
         except ValueError:
             await ctx.send(f"Invalid User ID: {arg}. Please provide a valid number.")
-            return
-
-        # Check if rate limited
-        if irApi.is_rate_limited():
-            remaining = irApi.get_rate_limit_remaining()
-            minutes = remaining // 60
-            await ctx.send(f"Bot is currently rate limited. Please try again in {minutes} minutes.")
             return
 
         # Run blocking API call in thread pool

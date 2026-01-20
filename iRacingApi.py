@@ -9,8 +9,10 @@ from iRacingAuthWrapper import (
     login,
     get_authenticated_client,
     is_rate_limited,
+    get_rate_limit_remaining,
     _client_manager,
 )
+from rateLimit import RateLimitError
 
 logging_config.setup_logging()
 
@@ -19,7 +21,6 @@ raceAndDriverObj = namedtuple(
     [
         "display_name",
         "series_name",
-        "series_id",
         "car_name",
         "session_start_time",
         "start_position",
@@ -48,6 +49,10 @@ CARS_CACHE_DURATION = 3600  # Cache for 1 hour
 def get_cached_cars():
     """Get car data with caching to reduce API calls"""
     global _cars_cache, _cars_cache_time
+
+    # Check rate limit before making API calls
+    if is_rate_limited():
+        raise RateLimitError(get_rate_limit_remaining())
 
     current_time = time.time()
 
@@ -103,6 +108,10 @@ def getLastRaceIfNew(cust_id, channel_id):
 
 
 def getLastRaceByCustId(cust_id):
+    # Check rate limit before making API calls
+    if is_rate_limited():
+        raise RateLimitError(get_rate_limit_remaining())
+
     try:
         logging.info(f"Getting last race for cust_id={cust_id}")
         ir_client = get_authenticated_client()
@@ -149,12 +158,11 @@ def lastRaceTimeMatching(cust_id, race_time, channel_id):
 
 
 def raceAndDriverData(race, cust_id):
-    try:
-        # Check rate limit before making API calls
-        if is_rate_limited():
-            logging.warning(f"Skipping raceAndDriverData for cust_id={cust_id} - rate limited")
-            return None
+    # Check rate limit before making API calls
+    if is_rate_limited():
+        raise RateLimitError(get_rate_limit_remaining())
 
+    try:
         ir_client = login()
         if ir_client is None:
             logging.warning(
@@ -172,7 +180,6 @@ def raceAndDriverData(race, cust_id):
 
         display_name = sql.get_display_name(cust_id)
         series_name = race.get("series_name")
-        series_id = race.get("series_id")
         car_id = race.get("car_id")
         allCarsData = get_cached_cars()
 
@@ -247,12 +254,11 @@ def raceAndDriverData(race, cust_id):
 
 
 def getDriverName(cust_id):
-    try:
-        # Check rate limit before making API calls
-        if is_rate_limited():
-            logging.warning(f"Skipping getDriverName for cust_id={cust_id} - rate limited")
-            return None
+    # Check rate limit before making API calls
+    if is_rate_limited():
+        raise RateLimitError(get_rate_limit_remaining())
 
+    try:
         ir_client = login()
         if ir_client is None:
             logging.warning(
@@ -341,6 +347,10 @@ def _calculate_team_totals(team_entry):
 def getSubsessionDataByUserId(subsession_id, user_id):
     """Fetch subsession data for a specific driver.
     Handles both individual races and team races (e.g., Daytona 24h)."""
+    # Check rate limit before making API calls
+    if is_rate_limited():
+        raise RateLimitError(get_rate_limit_remaining())
+
     try:
         ir_client = get_authenticated_client()
         if ir_client is None:

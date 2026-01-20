@@ -196,8 +196,9 @@ class iRacingClientManager:
                     if "rate limit exceeded" in error_data.get("error_description", "").lower():
                         self._set_rate_limit(response.text)
                         return None
-                except:
-                    pass
+                except (JSONDecodeError, ValueError):
+                    # Response body is not valid JSON, treat as generic auth failure
+                    logging.debug(f"Failed to parse 401 response as JSON: {response.text}")
 
                 logging.error(
                     f"OAuth authentication failed: {response.status_code} - {response.text}"

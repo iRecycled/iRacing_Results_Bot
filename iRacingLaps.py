@@ -3,6 +3,8 @@ import iRacingApi as ira
 import logging
 import logging_config
 import matplotlib.pyplot as plt
+from rateLimit import RateLimitError
+from iRacingAuthWrapper import is_rate_limited, get_rate_limit_remaining
 
 # Setup rotating file handler logging
 logging_config.setup_logging()
@@ -12,6 +14,10 @@ BACKGROUND_COLOR = "#40444B"  # Slightly lighter than Discord's dark mode
 
 
 def getLapsChart(last_race, highlighted_cust_id):
+    # Check rate limit before making API calls
+    if is_rate_limited():
+        raise RateLimitError(get_rate_limit_remaining())
+
     try:
         ir_client = ira.login()
         if ir_client is None:
