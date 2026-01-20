@@ -2,8 +2,10 @@
 iRacing OAuth 2.1 Password-Limited authentication helper
 Per iRacing spec: https://oauth.iracing.com/oauth2/book/token_endpoint.html#client-secret-and-user-password-masking
 """
+
 import hashlib
 import base64
+
 
 def mask_secret(secret, identifier):
     """
@@ -24,6 +26,6 @@ def mask_secret(secret, identifier):
     """
     normalized_id = identifier.strip().lower()
     combined = secret + normalized_id
-    hash_bytes = hashlib.sha256(combined.encode('utf-8')).digest()
-    masked = base64.b64encode(hash_bytes).decode('utf-8')
+    hash_bytes = hashlib.sha256(combined.encode("utf-8")).digest()
+    masked = base64.b64encode(hash_bytes).decode("utf-8")
     return masked

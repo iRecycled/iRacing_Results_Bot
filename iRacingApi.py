@@ -17,24 +17,42 @@ import logging_config
 load_dotenv()
 logging_config.setup_logging()
 
-raceAndDriverObj = namedtuple('raceAndDriverData', [
-    'display_name', 'series_name', 'series_id', 'car_name', 'session_start_time',
-    'start_position', 'finish_position', 'laps', 'incidents', 'points',
-    'sr_change', 'ir_change', 'track_name',
-    'split_number', 'series_logo',
-    'fastest_lap', 'average_lap', 'user_license', 'sof'
-])
+raceAndDriverObj = namedtuple(
+    "raceAndDriverData",
+    [
+        "display_name",
+        "series_name",
+        "series_id",
+        "car_name",
+        "session_start_time",
+        "start_position",
+        "finish_position",
+        "laps",
+        "incidents",
+        "points",
+        "sr_change",
+        "ir_change",
+        "track_name",
+        "split_number",
+        "series_logo",
+        "fastest_lap",
+        "average_lap",
+        "user_license",
+        "sof",
+    ],
+)
 
 # OAuth credentials
-CLIENT_ID = os.getenv('IRACING_CLIENT_ID')
-CLIENT_SECRET = os.getenv('IRACING_CLIENT_SECRET')
+CLIENT_ID = os.getenv("IRACING_CLIENT_ID")
+CLIENT_SECRET = os.getenv("IRACING_CLIENT_SECRET")
 TOKEN_URL = "https://oauth.iracing.com/oauth2/token"
 ENV_FILE_PATH = ".env"
+
 
 def _update_env_token(token, expires_in):
     """Update the cached token in .env file with expiration timestamp"""
     try:
-        with open(ENV_FILE_PATH, 'r') as f:
+        with open(ENV_FILE_PATH, "r") as f:
             lines = f.readlines()
 
         # Calculate expiration timestamp (with 5 minute buffer for safety)
@@ -45,32 +63,33 @@ def _update_env_token(token, expires_in):
         found_expires = False
         new_lines = []
         for line in lines:
-            if line.startswith('IRACING_TOKEN='):
-                new_lines.append(f'IRACING_TOKEN={token}\n')
+            if line.startswith("IRACING_TOKEN="):
+                new_lines.append(f"IRACING_TOKEN={token}\n")
                 found_token = True
-            elif line.startswith('IRACING_TOKEN_EXPIRES='):
-                new_lines.append(f'IRACING_TOKEN_EXPIRES={expiration_time}\n')
+            elif line.startswith("IRACING_TOKEN_EXPIRES="):
+                new_lines.append(f"IRACING_TOKEN_EXPIRES={expiration_time}\n")
                 found_expires = True
             else:
                 new_lines.append(line)
 
         if not found_token:
-            new_lines.append(f'IRACING_TOKEN={token}\n')
+            new_lines.append(f"IRACING_TOKEN={token}\n")
         if not found_expires:
-            new_lines.append(f'IRACING_TOKEN_EXPIRES={expiration_time}\n')
+            new_lines.append(f"IRACING_TOKEN_EXPIRES={expiration_time}\n")
 
-        with open(ENV_FILE_PATH, 'w') as f:
+        with open(ENV_FILE_PATH, "w") as f:
             f.writelines(new_lines)
 
         logging.debug("Updated cached token in .env")
     except Exception as e:
         logging.warning(f"Failed to update token in .env: {e}")
 
+
 def _get_cached_token():
     """Retrieve cached token from .env file if it hasn't expired"""
     try:
-        cached_token = os.getenv('IRACING_TOKEN')
-        expires_at = os.getenv('IRACING_TOKEN_EXPIRES')
+        cached_token = os.getenv("IRACING_TOKEN")
+        expires_at = os.getenv("IRACING_TOKEN_EXPIRES")
 
         if cached_token and expires_at:
             try:
@@ -80,12 +99,15 @@ def _get_cached_token():
                     logging.info("Using cached OAuth token from .env file")
                     return cached_token
                 else:
-                    logging.info("Cached token expired, requesting fresh token from iRacing")
+                    logging.info(
+                        "Cached token expired, requesting fresh token from iRacing"
+                    )
             except ValueError:
                 logging.warning("Invalid token expiration time in .env")
     except Exception as e:
         logging.warning(f"Failed to read cached token: {e}")
     return None
+
 
 # Singleton class to manage iRacing client
 class iRacingClientManager:
@@ -109,11 +131,11 @@ class iRacingClientManager:
             else:
                 data = error_response
 
-            error_desc = data.get('error_description', '')
+            error_desc = data.get("error_description", "")
 
             # Parse "retry after X seconds" and "resets in Y seconds"
-            retry_match = re.search(r'retry after (\d+) seconds', error_desc)
-            reset_match = re.search(r'resets in (\d+) seconds', error_desc)
+            retry_match = re.search(r"retry after (\d+) seconds", error_desc)
+            reset_match = re.search(r"resets in (\d+) seconds", error_desc)
 
             retry_after = int(retry_match.group(1)) if retry_match else 60
             resets_in = int(reset_match.group(1)) if reset_match else 3600
@@ -136,7 +158,9 @@ class iRacingClientManager:
             f"Rate limited! Blocking OAuth attempts for {resets_in} seconds "
             f"({resets_in // 60} minutes). Will retry after {datetime.fromtimestamp(self._rate_limit_until).strftime('%H:%M:%S')}"
         )
-        print(f"[RATE LIMIT] OAuth blocked for {resets_in // 60} minutes until {datetime.fromtimestamp(self._rate_limit_until).strftime('%H:%M:%S')}")
+        print(
+            f"[RATE LIMIT] OAuth blocked for {resets_in // 60} minutes until {datetime.fromtimestamp(self._rate_limit_until).strftime('%H:%M:%S')}"
+        )
 
     def is_rate_limited(self):
         """Check if we're currently rate limited"""
@@ -160,11 +184,13 @@ class iRacingClientManager:
         # Check rate limit before attempting new token request
         if self.is_rate_limited():
             remaining = self.get_rate_limit_remaining()
-            logging.info(f"Skipping OAuth request - rate limited for {remaining} more seconds")
+            logging.info(
+                f"Skipping OAuth request - rate limited for {remaining} more seconds"
+            )
             return None
 
-        username = os.getenv('ir_username')
-        password = os.getenv('ir_password')
+        username = os.getenv("ir_username")
+        password = os.getenv("ir_password")
 
         if not username or not password or not CLIENT_SECRET:
             logging.error("Missing OAuth credentials in environment variables")
@@ -180,16 +206,20 @@ class iRacingClientManager:
                 "client_secret": masked_client_secret,
                 "username": username,
                 "password": masked_password,
-                "scope": "iracing.auth"
+                "scope": "iracing.auth",
             }
 
             response = requests.post(TOKEN_URL, data=data, timeout=20)
 
             if response.status_code == 200:
                 tokens = response.json()
-                token = tokens.get('access_token')
-                expires_in = tokens.get('expires_in', 86400)  # Default to 24 hours if not provided
-                logging.info("OAuth token obtained successfully - requesting new token from iRacing")
+                token = tokens.get("access_token")
+                expires_in = tokens.get(
+                    "expires_in", 86400
+                )  # Default to 24 hours if not provided
+                logging.info(
+                    "OAuth token obtained successfully - requesting new token from iRacing"
+                )
                 print("[OAUTH] Fresh token obtained from iRacing servers")
                 # Cache the new token with expiration time
                 _update_env_token(token, expires_in)
@@ -198,16 +228,23 @@ class iRacingClientManager:
                 # Check if it's a rate limit error
                 try:
                     error_data = response.json()
-                    if "rate limit exceeded" in error_data.get("error_description", "").lower():
+                    if (
+                        "rate limit exceeded"
+                        in error_data.get("error_description", "").lower()
+                    ):
                         self._set_rate_limit(response.text)
                         return None
                 except:
                     pass
 
-                logging.error(f"OAuth authentication failed: {response.status_code} - {response.text}")
+                logging.error(
+                    f"OAuth authentication failed: {response.status_code} - {response.text}"
+                )
                 return None
             else:
-                logging.error(f"OAuth authentication failed: {response.status_code} - {response.text}")
+                logging.error(
+                    f"OAuth authentication failed: {response.status_code} - {response.text}"
+                )
                 return None
 
         except Exception as e:
@@ -250,6 +287,7 @@ class iRacingClientManager:
         self._token = None
         logging.info("Cleared cached iRacing client")
 
+
 # Create singleton instance
 _client_manager = iRacingClientManager()
 
@@ -258,6 +296,7 @@ _cars_cache = None
 _cars_cache_time = 0
 CARS_CACHE_DURATION = 3600  # Cache for 1 hour
 
+
 def get_cached_cars():
     """Get car data with caching to reduce API calls"""
     global _cars_cache, _cars_cache_time
@@ -265,7 +304,10 @@ def get_cached_cars():
     current_time = time.time()
 
     # Return cached data if still valid
-    if _cars_cache is not None and (current_time - _cars_cache_time) < CARS_CACHE_DURATION:
+    if (
+        _cars_cache is not None
+        and (current_time - _cars_cache_time) < CARS_CACHE_DURATION
+    ):
         logging.debug("Using cached car data")
         return _cars_cache
 
@@ -273,7 +315,9 @@ def get_cached_cars():
     try:
         ir_client = get_authenticated_client()
         if ir_client is None:
-            logging.warning("Not ready (rate limited or login failed) when fetching car data")
+            logging.warning(
+                "Not ready (rate limited or login failed) when fetching car data"
+            )
             # Return stale cache if available
             return _cars_cache if _cars_cache is not None else []
 
@@ -286,13 +330,16 @@ def get_cached_cars():
         # Return stale cache if available
         return _cars_cache if _cars_cache is not None else []
 
+
 def login():
     """Get the iRacing client from the singleton manager with automatic token refresh"""
     try:
         return _client_manager.get_client()
     except AccessTokenInvalid:
         # Token expired - clear and retry once
-        logging.debug("Access token invalid during login - clearing client and retrying")
+        logging.debug(
+            "Access token invalid during login - clearing client and retrying"
+        )
         _client_manager.clear_client()
         try:
             return _client_manager.get_client()
@@ -303,6 +350,7 @@ def login():
         logging.exception(e)
         logging.error("Error in login function")
         return None
+
 
 def get_authenticated_client():
     """Get an authenticated iRacing client. Handles token expiration with automatic re-auth.
@@ -342,7 +390,9 @@ class _AuthenticatedClientWrapper:
                 return attr(*args, **kwargs)
             except (AccessTokenInvalid, JSONDecodeError) as e:
                 # Token expired or session issue, re-authenticate and retry
-                logging.warning(f"Token/session issue during {name} call ({type(e).__name__}) - re-authenticating")
+                logging.warning(
+                    f"Token/session issue during {name} call ({type(e).__name__}) - re-authenticating"
+                )
                 # Clear both the inner client and the wrapper so we start fresh
                 _client_manager._client = None
                 _client_manager._token = None
@@ -357,25 +407,32 @@ class _AuthenticatedClientWrapper:
 
         return method_wrapper
 
+
 def is_rate_limited():
     """Check if we're currently rate limited (for external use)"""
     return _client_manager.is_rate_limited()
+
 
 def get_rate_limit_remaining():
     """Get seconds remaining on rate limit (for external use)"""
     return _client_manager.get_rate_limit_remaining()
 
+
 def getLastRaceIfNew(cust_id, channel_id):
     try:
-        logging.info(f"Checking for new race: cust_id={cust_id}, channel_id={channel_id}")
+        logging.info(
+            f"Checking for new race: cust_id={cust_id}, channel_id={channel_id}"
+        )
         last_race = getLastRaceByCustId(cust_id)
 
         if last_race is not None:
-            last_race_time = last_race.get('session_start_time')
+            last_race_time = last_race.get("session_start_time")
             logging.info(f"Found race with time: {last_race_time}")
 
             if not lastRaceTimeMatching(cust_id, last_race_time, channel_id):
-                logging.info(f"New race detected for cust_id={cust_id}! Saving and returning race data.")
+                logging.info(
+                    f"New race detected for cust_id={cust_id}! Saving and returning race data."
+                )
                 saveLastRaceTimeByCustId(cust_id, last_race_time, channel_id)
                 return last_race
             else:
@@ -387,8 +444,9 @@ def getLastRaceIfNew(cust_id, channel_id):
     except Exception as e:
         logging.exception(e)
         logging.error(f"Error in 'getLastRaceIfNew' for cust_id={cust_id}")
-        print(f'iRacingApi getLastRaceIfNew error: {e}')
+        print(f"iRacingApi getLastRaceIfNew error: {e}")
         return None
+
 
 def getLastRaceByCustId(cust_id):
     try:
@@ -399,11 +457,13 @@ def getLastRaceByCustId(cust_id):
             logging.error(f"Failed to login to iRacing API for cust_id={cust_id}")
             return None
 
-        logging.info(f"Successfully logged in, fetching recent races for cust_id={cust_id}")
-        lastTenRaces = ir_client.stats_member_recent_races(cust_id = cust_id)
+        logging.info(
+            f"Successfully logged in, fetching recent races for cust_id={cust_id}"
+        )
+        lastTenRaces = ir_client.stats_member_recent_races(cust_id=cust_id)
 
         if lastTenRaces is not None:
-            races = lastTenRaces.get('races', [])
+            races = lastTenRaces.get("races", [])
             logging.info(f"Found {len(races)} races for cust_id={cust_id}")
             if len(races) > 0:
                 firstRace = races[0]
@@ -413,7 +473,9 @@ def getLastRaceByCustId(cust_id):
         logging.info(f"No races found for cust_id={cust_id}")
         return None
     except AccessTokenInvalid:
-        logging.warning(f"Access token invalid during API call for cust_id={cust_id} - clearing client")
+        logging.warning(
+            f"Access token invalid during API call for cust_id={cust_id} - clearing client"
+        )
         _client_manager.clear_client()
         return None
     except Exception as e:
@@ -421,8 +483,10 @@ def getLastRaceByCustId(cust_id):
         logging.error(f"Error in getLastRaceByCustId for cust_id={cust_id}")
         return None
 
+
 def saveLastRaceTimeByCustId(cust_id, race_time, channel_id):
     return sql.save_user_last_race_time(cust_id, race_time, channel_id)
+
 
 def lastRaceTimeMatching(cust_id, race_time, channel_id):
     saved_last_race_time = sql.get_last_race_time(cust_id, channel_id)
@@ -431,20 +495,25 @@ def lastRaceTimeMatching(cust_id, race_time, channel_id):
         return False
     return saved_last_race_time == race_time
 
+
 def raceAndDriverData(race, cust_id):
     try:
         # Check rate limit before making API calls
         if is_rate_limited():
-            logging.warning(f"Skipping raceAndDriverData for cust_id={cust_id} - rate limited")
+            logging.warning(
+                f"Skipping raceAndDriverData for cust_id={cust_id} - rate limited"
+            )
             return None
 
         ir_client = login()
         if ir_client is None:
-            logging.warning(f"Skipping raceAndDriverData for cust_id={cust_id} - not ready (rate limited or login failed)")
+            logging.warning(
+                f"Skipping raceAndDriverData for cust_id={cust_id} - not ready (rate limited or login failed)"
+            )
             return None
 
-        subsession_id = race.get('subsession_id')
-        indv_race_data = getSubsessionDataByUserId(subsession_id ,cust_id)
+        subsession_id = race.get("subsession_id")
+        indv_race_data = getSubsessionDataByUserId(subsession_id, cust_id)
 
         # Check if subsession data retrieval failed
         if indv_race_data is None:
@@ -452,48 +521,81 @@ def raceAndDriverData(race, cust_id):
             return None
 
         display_name = sql.get_display_name(cust_id)
-        series_name = race.get('series_name')
-        series_id = race.get('series_id')
-        car_id = race.get('car_id')
+        series_name = race.get("series_name")
+        series_id = race.get("series_id")
+        car_id = race.get("car_id")
         allCarsData = get_cached_cars()
 
         # Safe car lookup with error handling
-        car_matches = list(filter(lambda obj: obj.get('car_id') == car_id, allCarsData))
+        car_matches = list(filter(lambda obj: obj.get("car_id") == car_id, allCarsData))
         if not car_matches:
-            logging.error(f"Car with ID {car_id} not found in car data for cust_id={cust_id}")
+            logging.error(
+                f"Car with ID {car_id} not found in car data for cust_id={cust_id}"
+            )
             return None
-        car_name = car_matches[0].get('car_name')
+        car_name = car_matches[0].get("car_name")
 
-        session_start_time_unfiltered = race.get('session_start_time')
+        session_start_time_unfiltered = race.get("session_start_time")
         # Convert to Unix timestamp for Discord's dynamic timestamp format
-        dt = datetime.fromisoformat(session_start_time_unfiltered.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(
+            session_start_time_unfiltered.replace("Z", "+00:00")
+        )
         unix_timestamp = int(dt.timestamp())
         # Discord format: <t:timestamp:f> shows short date/time in user's local timezone
         session_start_time = f"<t:{unix_timestamp}:f>"
-        start_position = race.get('start_position')
-        finish_position = race.get('finish_position')
-        laps = race.get('laps')
-        incidents = race.get('incidents')
-        points = race.get('points')
-        old_sr = race.get('old_sub_level') /100
-        new_sr = race.get('new_sub_level') /100
+        start_position = race.get("start_position")
+        finish_position = race.get("finish_position")
+        laps = race.get("laps")
+        incidents = race.get("incidents")
+        points = race.get("points")
+        old_sr = race.get("old_sub_level") / 100
+        new_sr = race.get("new_sub_level") / 100
         sr_change = round(new_sr - old_sr, 2)
 
         # Extract license class letter from user_license (e.g., "A" from "Class A")
-        license_class = indv_race_data.user_license.split()[-1] if indv_race_data.user_license else "?"
+        license_class = (
+            indv_race_data.user_license.split()[-1]
+            if indv_race_data.user_license
+            else "?"
+        )
 
         # Format SR with change and current rating: +0.03 (A2.47)
-        sr_change_str = f"{'+' if sr_change > 0 else ''}{sr_change} ({license_class}{new_sr:.2f})"
+        sr_change_str = (
+            f"{'+' if sr_change > 0 else ''}{sr_change} ({license_class}{new_sr:.2f})"
+        )
 
-        old_ir = race.get('oldi_rating')
-        new_ir = race.get('newi_rating')
+        old_ir = race.get("oldi_rating")
+        new_ir = race.get("newi_rating")
         ir_change = new_ir - old_ir
         ir_change_str = f"{'+' if ir_change > 0 else ''}{ir_change} ({new_ir})"
-        track_name = race.get('track').get('track_name')
+        track_name = race.get("track").get("track_name")
 
-        return formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, ir_change_str, track_name, indv_race_data.split_number, indv_race_data.series_logo, indv_race_data.fastest_lap, indv_race_data.average_lap, indv_race_data.user_license, indv_race_data.sof, indv_race_data.team_total_laps, indv_race_data.team_total_incidents)
+        return formatRaceData(
+            display_name,
+            series_name,
+            car_name,
+            session_start_time,
+            start_position,
+            finish_position,
+            laps,
+            incidents,
+            points,
+            sr_change_str,
+            ir_change_str,
+            track_name,
+            indv_race_data.split_number,
+            indv_race_data.series_logo,
+            indv_race_data.fastest_lap,
+            indv_race_data.average_lap,
+            indv_race_data.user_license,
+            indv_race_data.sof,
+            indv_race_data.team_total_laps,
+            indv_race_data.team_total_incidents,
+        )
     except AccessTokenInvalid:
-        logging.warning(f"Access token invalid during API call in raceAndDriverData for cust_id={cust_id} - clearing client")
+        logging.warning(
+            f"Access token invalid during API call in raceAndDriverData for cust_id={cust_id} - clearing client"
+        )
         _client_manager.clear_client()
         return None
     except Exception as e:
@@ -501,33 +603,54 @@ def raceAndDriverData(race, cust_id):
         logging.error(f"Error in raceAndDriverData for cust_id={cust_id}")
         return None
 
+
 def getDriverName(cust_id):
     try:
         # Check rate limit before making API calls
         if is_rate_limited():
-            logging.warning(f"Skipping getDriverName for cust_id={cust_id} - rate limited")
+            logging.warning(
+                f"Skipping getDriverName for cust_id={cust_id} - rate limited"
+            )
             return None
 
         ir_client = login()
         if ir_client is None:
-            logging.warning(f"Skipping getDriverName for cust_id={cust_id} - not ready (rate limited or login failed)")
+            logging.warning(
+                f"Skipping getDriverName for cust_id={cust_id} - not ready (rate limited or login failed)"
+            )
             return None
 
-        data = ir_client.member_profile(cust_id = cust_id)
+        data = ir_client.member_profile(cust_id=cust_id)
         if data is None:
             return None
-        driver_name = data.get('member_info').get('display_name')
+        driver_name = data.get("member_info").get("display_name")
         return driver_name
     except AccessTokenInvalid:
-        logging.warning(f"Access token invalid during API call in getDriverName for cust_id={cust_id} - clearing client")
+        logging.warning(
+            f"Access token invalid during API call in getDriverName for cust_id={cust_id} - clearing client"
+        )
         _client_manager.clear_client()
         return None
     except Exception as e:
         logging.exception(e)
-        print(f'exception hit: {e}')
+        print(f"exception hit: {e}")
         return None
 
-SubsessionData = namedtuple("SubsessionData", ["split_number", "series_logo", "fastest_lap", "average_lap", "user_license", "sof", "team_total_laps", "team_total_incidents"])
+
+SubsessionData = namedtuple(
+    "SubsessionData",
+    [
+        "split_number",
+        "series_logo",
+        "fastest_lap",
+        "average_lap",
+        "user_license",
+        "sof",
+        "team_total_laps",
+        "team_total_incidents",
+    ],
+)
+
 
 def _find_driver_in_race_session(race_session, user_id):
     """Find driver data in a RACE session. Handles both individual and team races.
@@ -535,9 +658,9 @@ def _find_driver_in_race_session(race_session, user_id):
     if not race_session:
         return None, None
 
-    results = race_session.get('results')
+    results = race_session.get("results")
     if not results:
-        logging.warning(f"No results found in RACE session")
+        logging.warning("No results found in RACE session")
         return None, None
 
     user_id_int = int(user_id)
@@ -545,15 +668,15 @@ def _find_driver_in_race_session(race_session, user_id):
     # Check each result entry
     for result in results:
         # Case 1: Individual race - cust_id is directly in result
-        if result.get('cust_id') == user_id_int:
+        if result.get("cust_id") == user_id_int:
             logging.debug(f"Found user {user_id} in individual race result")
             return result, None
 
         # Case 2: Team race - cust_id is in driver_results array
-        driver_results = result.get('driver_results')
+        driver_results = result.get("driver_results")
         if driver_results and isinstance(driver_results, list):
             for driver in driver_results:
-                if driver.get('cust_id') == user_id_int:
+                if driver.get("cust_id") == user_id_int:
                     logging.debug(f"Found user {user_id} in team race driver_results")
                     return driver, result  # Return both driver data and team entry
 
@@ -564,16 +687,13 @@ def _find_driver_in_race_session(race_session, user_id):
 def _calculate_team_totals(team_entry):
     """Calculate team-wide totals from a team race entry.
     Returns: dict with team_total_laps and team_total_incidents"""
-    team_totals = {
-        'team_total_laps': 0,
-        'team_total_incidents': 0
-    }
+    team_totals = {"team_total_laps": 0, "team_total_incidents": 0}
 
-    driver_results = team_entry.get('driver_results')
+    driver_results = team_entry.get("driver_results")
     if driver_results and isinstance(driver_results, list):
         for driver in driver_results:
-            team_totals['team_total_laps'] += driver.get('laps_complete', 0)
-            team_totals['team_total_incidents'] += driver.get('incidents', 0)
+            team_totals["team_total_laps"] += driver.get("laps_complete", 0)
+            team_totals["team_total_incidents"] += driver.get("incidents", 0)
 
     return team_totals
 
@@ -594,23 +714,33 @@ def getSubsessionDataByUserId(subsession_id, user_id):
             return None
 
         # Extract common race metadata
-        licenses = race_result.get('allowed_licenses')
-        all_splits = race_result.get('associated_subsession_ids')
+        licenses = race_result.get("allowed_licenses")
+        all_splits = race_result.get("associated_subsession_ids")
         split = getSplitNumber(all_splits, subsession_id)
-        split_number = f"{split} of {len(all_splits)}" if split is not None and all_splits is not None else "N/A"
-        series_logo = race_result.get('series_logo')
-        sof = race_result.get('event_strength_of_field')
+        split_number = (
+            f"{split} of {len(all_splits)}"
+            if split is not None and all_splits is not None
+            else "N/A"
+        )
+        series_logo = race_result.get("series_logo")
+        sof = race_result.get("event_strength_of_field")
 
         # Find RACE session in session_results
-        all_race_type_results = race_result.get('session_results')
+        all_race_type_results = race_result.get("session_results")
         if not all_race_type_results:
-            logging.warning(f"No session_results found for subsession_id={subsession_id}")
+            logging.warning(
+                f"No session_results found for subsession_id={subsession_id}"
+            )
             return None
 
-        race_sessions = [s for s in all_race_type_results if s.get('simsession_name') == "RACE"]
+        race_sessions = [
+            s for s in all_race_type_results if s.get("simsession_name") == "RACE"
+        ]
         if not race_sessions:
-            session_names = [s.get('simsession_name') for s in all_race_type_results]
-            logging.warning(f"No RACE session found for subsession_id={subsession_id}. Available sessions: {session_names}")
+            session_names = [s.get("simsession_name") for s in all_race_type_results]
+            logging.warning(
+                f"No RACE session found for subsession_id={subsession_id}. Available sessions: {session_names}"
+            )
             return None
 
         # Find the driver in the race session
@@ -621,12 +751,14 @@ def getSubsessionDataByUserId(subsession_id, user_id):
             return None
 
         # Extract driver-specific stats
-        fastest_lap = convert_time(driver_data.get('best_lap_time'))
-        average_lap = convert_time(driver_data.get('average_lap'))
-        user_license = getDriverLicense(int(driver_data.get('old_license_level')), licenses)
+        fastest_lap = convert_time(driver_data.get("best_lap_time"))
+        average_lap = convert_time(driver_data.get("average_lap"))
+        user_license = getDriverLicense(
+            int(driver_data.get("old_license_level")), licenses
+        )
 
         # Calculate team totals if this is a team race
-        team_totals = {'team_total_laps': 0, 'team_total_incidents': 0}
+        team_totals = {"team_total_laps": 0, "team_total_incidents": 0}
         if team_entry:
             team_totals = _calculate_team_totals(team_entry)
 
@@ -638,18 +770,23 @@ def getSubsessionDataByUserId(subsession_id, user_id):
             average_lap,
             user_license,
             sof,
-            team_totals['team_total_laps'],
-            team_totals['team_total_incidents']
+            team_totals["team_total_laps"],
+            team_totals["team_total_incidents"],
         )
         return data
     except AccessTokenInvalid:
-        logging.warning(f"Access token invalid during API call in getSubsessionDataByUserId for subsession_id={subsession_id} - clearing client")
+        logging.warning(
+            f"Access token invalid during API call in getSubsessionDataByUserId for subsession_id={subsession_id} - clearing client"
+        )
         _client_manager.clear_client()
         return None
     except Exception as e:
         logging.exception(e)
-        logging.error(f"Error in getSubsessionDataByUserId for subsession_id={subsession_id}, user_id={user_id}")
+        logging.error(
+            f"Error in getSubsessionDataByUserId for subsession_id={subsession_id}, user_id={user_id}"
+        )
         return None
+
 
 def getSplitNumber(all_splits, subsession_id):
     try:
@@ -658,18 +795,19 @@ def getSplitNumber(all_splits, subsession_id):
         return split_number
     except Exception as e:
         logging.exception(e)
-        print('get split error')
+        print("get split error")
         return None
+
 
 def convert_time(time):
     # Handle None, empty string, or invalid time values
-    if time is None or time == '' or time == 0:
+    if time is None or time == "" or time == 0:
         return "N/A"
 
     try:
         time_str = str(time)
         # Handle negative times (DNS/DNF cases)
-        if time_str.startswith('-'):
+        if time_str.startswith("-"):
             return "N/A"
 
         # Need at least 4 characters for the format
@@ -688,18 +826,41 @@ def convert_time(time):
         logging.debug(f"convert_time: Invalid time value '{time}': {e}")
         return "N/A"
 
+
 def getDriverLicense(license_level, allowed_licenses):
     for license_info in allowed_licenses:
-        min_level = license_info['min_license_level']
-        max_level = license_info['max_license_level']
-        group_name = license_info['group_name']
-        
+        min_level = license_info["min_license_level"]
+        max_level = license_info["max_license_level"]
+        group_name = license_info["group_name"]
+
         if min_level <= license_level <= max_level:
             return group_name
-    
+
     return None
 
-def formatRaceData(display_name, series_name, car_name, session_start_time, start_position, finish_position, laps, incidents, points, sr_change_str, ir_change_str, track_name, split_number, series_logo, fastest_lap, average_lap, user_license, sof, team_total_laps, team_total_incidents):
+
+def formatRaceData(
+    display_name,
+    series_name,
+    car_name,
+    session_start_time,
+    start_position,
+    finish_position,
+    laps,
+    incidents,
+    points,
+    sr_change_str,
+    ir_change_str,
+    track_name,
+    split_number,
+    series_logo,
+    fastest_lap,
+    average_lap,
+    user_license,
+    sof,
+    team_total_laps,
+    team_total_incidents,
+):
     message = (
         f"Name: {display_name}\n"
         f"Series Name: {series_name}\n"
@@ -724,12 +885,13 @@ def formatRaceData(display_name, series_name, car_name, session_start_time, star
         f"iRating Change: {ir_change_str}\n"
         f"User License: {user_license}\n"
         f"Split Number: {split_number}\n"
-        #f"Series Logo: {series_logo}\n"
+        # f"Series Logo: {series_logo}\n"
         f"Fastest Lap: {fastest_lap}\n"
         f"Average Lap: {average_lap}\n"
     )
 
     return message
+
 
 # def test_api_request():
 #     ir_client = get_authenticated_client()

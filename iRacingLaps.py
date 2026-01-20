@@ -1,4 +1,3 @@
-from iracingdataapi.client import irDataClient
 from iracingdataapi.exceptions import AccessTokenInvalid
 import iRacingApi as ira
 import logging
@@ -9,7 +8,8 @@ import matplotlib.pyplot as plt
 logging_config.setup_logging()
 
 # Chart styling constants
-BACKGROUND_COLOR = '#40444B'  # Slightly lighter than Discord's dark mode
+BACKGROUND_COLOR = "#40444B"  # Slightly lighter than Discord's dark mode
+
 
 def getLapsChart(last_race, highlighted_cust_id):
     try:
@@ -18,8 +18,8 @@ def getLapsChart(last_race, highlighted_cust_id):
             logging.error("Failed to login in getLapsChart")
             return False
 
-        race_title = last_race.get('series_name')
-        subsession_id = last_race.get('subsession_id')
+        race_title = last_race.get("series_name")
+        subsession_id = last_race.get("subsession_id")
         lap_data = ir_client.result_lap_chart_data(subsession_id, 0)
 
         # Get the full race results to get finishing positions
@@ -33,26 +33,29 @@ def getLapsChart(last_race, highlighted_cust_id):
         # For individual races: map cust_id -> (finishing position, car_class_id)
         finishing_positions = {}
         car_class_map = {}  # Map entity_id -> car_class_id
-        group_id_to_team_id = {}  # Map group_id from lap data to team_id from race results
         highlighted_car_class = None  # Store the car class of the highlighted driver
         highlighted_cust_id_int = int(highlighted_cust_id)
 
-        all_race_type_results = race_result.get('session_results', [])
-        race_session = [session for session in all_race_type_results if session.get('simsession_name') == "RACE"]
+        all_race_type_results = race_result.get("session_results", [])
+        race_session = [
+            session
+            for session in all_race_type_results
+            if session.get("simsession_name") == "RACE"
+        ]
         if race_session:
-            results = race_session[0].get('results', [])
+            results = race_session[0].get("results", [])
             # Detect if this is a team race by checking if results contain driver_results arrays
-            is_team_race = len(results) > 0 and 'driver_results' in results[0]
+            is_team_race = len(results) > 0 and "driver_results" in results[0]
             if is_team_race:
                 # For team races, map team names to car classes and team_ids
                 team_name_to_car_class = {}  # Map team name -> car_class_id
                 team_name_to_team_id = {}  # Map team name -> team_id
 
                 for result in results:
-                    team_id = result.get('team_id')
-                    team_name = result.get('display_name')  # Team name
-                    finish_pos = result.get('finish_position')
-                    car_class_id = result.get('car_class_id')
+                    team_id = result.get("team_id")
+                    team_name = result.get("display_name")  # Team name
+                    finish_pos = result.get("finish_position")
+                    car_class_id = result.get("car_class_id")
 
                     if team_id and finish_pos is not None:
                         finishing_positions[team_id] = finish_pos + 1
@@ -63,20 +66,20 @@ def getLapsChart(last_race, highlighted_cust_id):
                         team_name_to_team_id[team_name] = team_id
 
                     # Check if highlighted driver is in this team to get their car class
-                    driver_results = result.get('driver_results', [])
+                    driver_results = result.get("driver_results", [])
                     for driver in driver_results:
-                        if driver.get('cust_id') == highlighted_cust_id_int:
+                        if driver.get("cust_id") == highlighted_cust_id_int:
                             highlighted_car_class = car_class_id
             else:
                 # For individual races, use cust_id
                 for result in results:
-                    cust_id = result.get('cust_id')
-                    finish_pos = result.get('finish_position')
+                    cust_id = result.get("cust_id")
+                    finish_pos = result.get("finish_position")
                     if cust_id and finish_pos is not None:
                         finishing_positions[cust_id] = finish_pos + 1
 
                     # Get car class for this driver
-                    car_class_id = result.get('car_class_id')
+                    car_class_id = result.get("car_class_id")
                     car_class_map[cust_id] = car_class_id
 
                     # Check if this is the highlighted driver
@@ -90,32 +93,39 @@ def getLapsChart(last_race, highlighted_cust_id):
         for driver in lap_data:
             # Use group_id for team races, cust_id for individual races
             if is_team_race:
-                group_id = driver['group_id']
-                team_name = driver['name']  # Team name from lap data
+                group_id = driver["group_id"]
+                team_name = driver["name"]  # Team name from lap data
                 # Map group_id to car class using team name
                 entity_id = group_id
                 if team_name in team_name_to_car_class:
                     car_class_map[entity_id] = team_name_to_car_class[team_name]
                     # Also update finishing_positions if needed
-                    if entity_id not in finishing_positions and team_name in team_name_to_team_id:
+                    if (
+                        entity_id not in finishing_positions
+                        and team_name in team_name_to_team_id
+                    ):
                         team_id = team_name_to_team_id[team_name]
                         if team_id in finishing_positions:
-                            finishing_positions[entity_id] = finishing_positions[team_id]
+                            finishing_positions[entity_id] = finishing_positions[
+                                team_id
+                            ]
             else:
-                entity_id = driver['cust_id']
+                entity_id = driver["cust_id"]
 
-            lap_num = driver['lap_number']
-            lap_position = driver['lap_position']
+            lap_num = driver["lap_number"]
+            lap_position = driver["lap_position"]
 
             if entity_id in race_laps_per_entity:
-                race_laps_per_entity[entity_id]['lap_numbers'].append(int(lap_num))
-                race_laps_per_entity[entity_id]['lap_positions'].append(int(lap_position))
-                race_laps_per_entity[entity_id]['drivers'].add(driver.get('cust_id'))
+                race_laps_per_entity[entity_id]["lap_numbers"].append(int(lap_num))
+                race_laps_per_entity[entity_id]["lap_positions"].append(
+                    int(lap_position)
+                )
+                race_laps_per_entity[entity_id]["drivers"].add(driver.get("cust_id"))
             else:
                 race_laps_per_entity[entity_id] = {
-                    'lap_numbers': [int(lap_num)],
-                    'lap_positions': [int(lap_position)],
-                    'drivers': {driver.get('cust_id')}
+                    "lap_numbers": [int(lap_num)],
+                    "lap_positions": [int(lap_position)],
+                    "drivers": {driver.get("cust_id")},
                 }
 
             # Capture lap numbers for the race leader (position 1)
@@ -126,7 +136,9 @@ def getLapsChart(last_race, highlighted_cust_id):
         max_lap = max(leader_lap_numbers) if leader_lap_numbers else 0
 
         # Helper function to find the position just below the lead lap drivers
-        def get_drop_position(dnf_lap, all_entities_data, finishing_pos, total_entities):
+        def get_drop_position(
+            dnf_lap, all_entities_data, finishing_pos, total_entities
+        ):
             """
             Find the best position to drop to - just below entities still on lead lap.
             Capped at the entity's actual finishing position to avoid going off the chart.
@@ -135,13 +147,15 @@ def getLapsChart(last_race, highlighted_cust_id):
             positions_of_running_entities = []
 
             for other_entity_id, other_data in all_entities_data.items():
-                other_laps = other_data['lap_numbers']
+                other_laps = other_data["lap_numbers"]
                 # If they completed more laps, check their position on the DNF lap
                 if other_laps and other_laps[-1] >= dnf_lap:
                     # Find their position on the lap where the entity DNF'd
                     try:
                         lap_index = other_laps.index(dnf_lap)
-                        positions_of_running_entities.append(other_data['lap_positions'][lap_index])
+                        positions_of_running_entities.append(
+                            other_data["lap_positions"][lap_index]
+                        )
                     except (ValueError, IndexError):
                         pass
 
@@ -161,8 +175,8 @@ def getLapsChart(last_race, highlighted_cust_id):
         total_entities = len(race_laps_per_entity)
 
         for entity_id, data in race_laps_per_entity.items():
-            lap_numbers = data['lap_numbers']
-            lap_positions = data['lap_positions']
+            lap_numbers = data["lap_numbers"]
+            lap_positions = data["lap_positions"]
 
             if is_team_race:
                 # For team races, extend line only to the laps completed by the team (no DNF drops)
@@ -179,12 +193,17 @@ def getLapsChart(last_race, highlighted_cust_id):
                 finish_pos = finishing_positions[entity_id]
 
                 # Calculate intermediate drop position (just below lead lap entities)
-                intermediate_position = get_drop_position(dnf_lap, race_laps_per_entity, finish_pos, total_entities)
+                intermediate_position = get_drop_position(
+                    dnf_lap, race_laps_per_entity, finish_pos, total_entities
+                )
 
                 # Create a smooth drop: last position -> intermediate -> final
                 # Add intermediate point right after DNF lap, then final position at race end
                 lap_numbers_extended = lap_numbers + [dnf_lap + 0.5, max_lap]
-                lap_positions_extended = lap_positions + [intermediate_position, finish_pos]
+                lap_positions_extended = lap_positions + [
+                    intermediate_position,
+                    finish_pos,
+                ]
             else:
                 # Entity completed the race
                 # Gradually transition from last lap position to finishing position
@@ -196,7 +215,10 @@ def getLapsChart(last_race, highlighted_cust_id):
                 if last_lap_position != finish_pos:
                     # Add a point slightly after the last lap to start the transition
                     lap_numbers_extended = lap_numbers + [max_lap - 0.3, max_lap]
-                    lap_positions_extended = lap_positions + [last_lap_position, finish_pos]
+                    lap_positions_extended = lap_positions + [
+                        last_lap_position,
+                        finish_pos,
+                    ]
                 else:
                     # Position didn't change, just extend the line
                     lap_numbers_extended = lap_numbers + [max_lap]
@@ -205,7 +227,7 @@ def getLapsChart(last_race, highlighted_cust_id):
             # Determine line color and width based on car class and highlight status
             should_highlight = False
             if is_team_race:
-                should_highlight = int(highlighted_cust_id) in data['drivers']
+                should_highlight = int(highlighted_cust_id) in data["drivers"]
             else:
                 should_highlight = int(entity_id) == int(highlighted_cust_id)
 
@@ -213,21 +235,30 @@ def getLapsChart(last_race, highlighted_cust_id):
             entity_car_class = car_class_map.get(entity_id)
 
             # Color by car class - only color if same class as highlighted driver, otherwise gray
-            if highlighted_car_class is not None and entity_car_class == highlighted_car_class:
+            if (
+                highlighted_car_class is not None
+                and entity_car_class == highlighted_car_class
+            ):
                 # Same car class - use a colored line
                 line_color = None  # Let matplotlib use default color cycle
                 line_width = 5 if should_highlight else 1.5
             else:
                 # Different car class or unknown - use gray
-                line_color = '#808080'  # Gray color
+                line_color = "#808080"  # Gray color
                 line_width = 3 if should_highlight else 1
 
-            plt.plot(lap_numbers_extended, lap_positions_extended, linestyle='-', linewidth=line_width,
-                    color=line_color, label=f'Entity: {entity_id}')
+            plt.plot(
+                lap_numbers_extended,
+                lap_positions_extended,
+                linestyle="-",
+                linewidth=line_width,
+                color=line_color,
+                label=f"Entity: {entity_id}",
+            )
 
-        plt.title('{}'.format(race_title), color="white")
-        plt.xlabel('Lap Number', color="white")
-        plt.ylabel('Position', color="white")
+        plt.title("{}".format(race_title), color="white")
+        plt.xlabel("Lap Number", color="white")
+        plt.ylabel("Position", color="white")
 
         # Determine the x-axis tick interval based on the number of laps
         if leader_lap_numbers:
@@ -265,7 +296,7 @@ def getLapsChart(last_race, highlighted_cust_id):
 
         # Add y-axis labels on the right side as well
         ax = plt.gca()
-        ax.tick_params(axis='y', labelcolor='white')
+        ax.tick_params(axis="y", labelcolor="white")
         ax2 = ax.twinx()  # Create a second y-axis on the right
         ax2.set_ylim(ax.get_ylim())  # Match the limits (already inverted)
         ax2.set_yticks(y_ticks)
@@ -274,11 +305,13 @@ def getLapsChart(last_race, highlighted_cust_id):
         # Adjust layout to prevent label cutoff
         plt.tight_layout()
 
-        plt.savefig('race_plot.png', facecolor=BACKGROUND_COLOR, bbox_inches='tight')
+        plt.savefig("race_plot.png", facecolor=BACKGROUND_COLOR, bbox_inches="tight")
         plt.close()  # Close figure to prevent memory leaks
         return True
     except AccessTokenInvalid:
-        logging.debug("Access token invalid during API call in getLapsChart - clearing client")
+        logging.debug(
+            "Access token invalid during API call in getLapsChart - clearing client"
+        )
         ira._client_manager.clear_client()
         plt.close()  # Clean up any partial figure
         return False
