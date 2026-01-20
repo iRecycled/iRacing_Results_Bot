@@ -9,6 +9,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import logging_config
 from rateLimit import rate_limit_handler
+from discordHelpers import postRaceToDiscord
 
 from dotenv import load_dotenv
 
@@ -55,7 +56,7 @@ async def startLoopForUpdates():
 
                 for user_id in all_user_ids:
                     logging.info(f"Processing user_id={user_id} in channel_id={channel_id}")
-                    await getUserRaceDataAndPost(channel_id, user_id)
+                    await processAndPostRace(channel_id, user_id)
 
         print("Finished scheduled task, waiting...")
         logging.info("=== Finished scheduled race check ===")
@@ -65,60 +66,58 @@ async def startLoopForUpdates():
 
 
 @rate_limit_handler
-async def getUserRaceDataAndPost(channel_id, user_id):
-    logging.info(f"getUserRaceDataAndPost called for user_id={user_id}, channel_id={channel_id}")
+async def processAndPostRace(channel_id, user_id):
+    """Process a user's latest race and post results to Discord.
 
-    # Run blocking API call in thread pool to avoid blocking event loop
+    Pipeline:
+    1. Check for new race
+    2. Format race data
+    3. Generate lap chart
+    4. Post to Discord
+    """
+    logging.info(f"Processing race for user_id={user_id}, channel_id={channel_id}")
+
+    # Step 1: Check for new race
     loop = asyncio.get_event_loop()
     last_race = await loop.run_in_executor(executor, irApi.getLastRaceIfNew, user_id, channel_id)
 
-    if last_race is not None:
-        logging.info(f"New race found for user_id={user_id}, preparing message")
+    if last_race is None:
+        logging.info(f"No new race for user_id={user_id}")
+        return
 
-        # Run blocking API call in thread pool
-        driver_race_result_msg = await loop.run_in_executor(
-            executor, irApi.raceAndDriverData, last_race, user_id
-        )
+    logging.info(f"New race found for user_id={user_id}, processing...")
 
-        # Check if race data was successfully retrieved
-        if driver_race_result_msg is None:
-            msg = f"Failed to get race data for user_id={user_id}, skipping message send"
-            logging.warning(msg)
-            return
+    # Step 2: Format race results message
+    formatted_message = await loop.run_in_executor(
+        executor, irApi.raceAndDriverData, last_race, user_id
+    )
 
-        print(f"Attempting to send message to channel_id: {channel_id}")
-        logging.info(f"Attempting to send message to channel_id={channel_id}")
+    if formatted_message is None:
+        logging.warning(f"Failed to format race data for user_id={user_id}")
+        return
 
-        channel = bot.get_channel(int(channel_id))
-        if channel is None:
-            print(f"Channel with ID {channel_id} not found.")
-            logging.error(f"Channel with ID {channel_id} not found.")
-            return
-
-        try:
-            logging.info(f"Generating lap chart for user_id={user_id}")
-            # Run blocking chart generation in thread pool
-            chart_success = await loop.run_in_executor(
-                executor, irLaps.getLapsChart, last_race, user_id
-            )
-            if chart_success:
-                with open("race_plot.png", "rb") as pic:
-                    logging.info(f"Sending race result message to channel {channel_id}")
-                    await channel.send(driver_race_result_msg)
-                    await channel.send(file=discord.File(pic))
-                logging.info(f"Lap chart sent to channel {channel_id}")
-
-            logging.info(f"Message successfully sent to channel {channel_id}")
-            print(f"Message sent to channel {channel_id}")
-        except discord.Forbidden:
-            logging.error(f"Bot does not have permission to send messages in channel {channel_id}.")
-            print(f"Bot does not have permission to send messages in channel {channel_id}.")
-        except discord.HTTPException as e:
-            logging.exception(e)
-            logging.error(f"Failed to send message due to HTTP error: {e}")
-            print(f"Failed to send message due to HTTP error: {e}")
+    # Step 3: Generate lap chart
+    chart_path = None
+    chart_success = await loop.run_in_executor(executor, irLaps.getLapsChart, last_race, user_id)
+    if chart_success:
+        chart_path = "race_plot.png"
+        logging.info(f"Chart generated for user_id={user_id}")
     else:
-        logging.info(f"No new race for user_id={user_id} in channel_id={channel_id}")
+        logging.warning(f"Failed to generate chart for user_id={user_id}")
+
+    # Step 4: Get Discord channel and post
+    channel = bot.get_channel(int(channel_id))
+    if channel is None:
+        logging.error(f"Channel {channel_id} not found")
+        return
+
+    # Post to Discord
+    success = await postRaceToDiscord(channel, formatted_message, chart_path)
+    if success:
+        logging.info(f"Successfully posted race for user_id={user_id} to channel {channel_id}")
+        print(f"Message sent to channel {channel_id}")
+    else:
+        logging.error(f"Failed to post race for user_id={user_id} to channel {channel_id}")
 
 
 @bot.command()
