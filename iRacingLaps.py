@@ -38,9 +38,7 @@ def getLapsChart(last_race, highlighted_cust_id):
 
         all_race_type_results = race_result.get("session_results", [])
         race_session = [
-            session
-            for session in all_race_type_results
-            if session.get("simsession_name") == "RACE"
+            session for session in all_race_type_results if session.get("simsession_name") == "RACE"
         ]
         if race_session:
             results = race_session[0].get("results", [])
@@ -100,15 +98,10 @@ def getLapsChart(last_race, highlighted_cust_id):
                 if team_name in team_name_to_car_class:
                     car_class_map[entity_id] = team_name_to_car_class[team_name]
                     # Also update finishing_positions if needed
-                    if (
-                        entity_id not in finishing_positions
-                        and team_name in team_name_to_team_id
-                    ):
+                    if entity_id not in finishing_positions and team_name in team_name_to_team_id:
                         team_id = team_name_to_team_id[team_name]
                         if team_id in finishing_positions:
-                            finishing_positions[entity_id] = finishing_positions[
-                                team_id
-                            ]
+                            finishing_positions[entity_id] = finishing_positions[team_id]
             else:
                 entity_id = driver["cust_id"]
 
@@ -117,9 +110,7 @@ def getLapsChart(last_race, highlighted_cust_id):
 
             if entity_id in race_laps_per_entity:
                 race_laps_per_entity[entity_id]["lap_numbers"].append(int(lap_num))
-                race_laps_per_entity[entity_id]["lap_positions"].append(
-                    int(lap_position)
-                )
+                race_laps_per_entity[entity_id]["lap_positions"].append(int(lap_position))
                 race_laps_per_entity[entity_id]["drivers"].add(driver.get("cust_id"))
             else:
                 race_laps_per_entity[entity_id] = {
@@ -136,9 +127,7 @@ def getLapsChart(last_race, highlighted_cust_id):
         max_lap = max(leader_lap_numbers) if leader_lap_numbers else 0
 
         # Helper function to find the position just below the lead lap drivers
-        def get_drop_position(
-            dnf_lap, all_entities_data, finishing_pos, total_entities
-        ):
+        def get_drop_position(dnf_lap, all_entities_data, finishing_pos, total_entities):
             """
             Find the best position to drop to - just below entities still on lead lap.
             Capped at the entity's actual finishing position to avoid going off the chart.
@@ -153,9 +142,7 @@ def getLapsChart(last_race, highlighted_cust_id):
                     # Find their position on the lap where the entity DNF'd
                     try:
                         lap_index = other_laps.index(dnf_lap)
-                        positions_of_running_entities.append(
-                            other_data["lap_positions"][lap_index]
-                        )
+                        positions_of_running_entities.append(other_data["lap_positions"][lap_index])
                     except (ValueError, IndexError):
                         pass
 
@@ -235,10 +222,7 @@ def getLapsChart(last_race, highlighted_cust_id):
             entity_car_class = car_class_map.get(entity_id)
 
             # Color by car class - only color if same class as highlighted driver, otherwise gray
-            if (
-                highlighted_car_class is not None
-                and entity_car_class == highlighted_car_class
-            ):
+            if highlighted_car_class is not None and entity_car_class == highlighted_car_class:
                 # Same car class - use a colored line
                 line_color = None  # Let matplotlib use default color cycle
                 line_width = 5 if should_highlight else 1.5
@@ -309,9 +293,7 @@ def getLapsChart(last_race, highlighted_cust_id):
         plt.close()  # Close figure to prevent memory leaks
         return True
     except AccessTokenInvalid:
-        logging.debug(
-            "Access token invalid during API call in getLapsChart - clearing client"
-        )
+        logging.debug("Access token invalid during API call in getLapsChart - clearing client")
         ira._client_manager.clear_client()
         plt.close()  # Clean up any partial figure
         return False

@@ -45,15 +45,11 @@ async def startLoopForUpdates():
         if irApi.is_rate_limited():
             remaining = irApi.get_rate_limit_remaining()
             minutes = remaining // 60
-            print(
-                f"[RATE LIMITED] Pausing race checks for {remaining} seconds ({minutes} minutes)"
-            )
+            print(f"[RATE LIMITED] Pausing race checks for {remaining} seconds ({minutes} minutes)")
             logging.info(f"Rate limited - pausing loop for {remaining} seconds")
 
             # Change loop interval to wake up when rate limit expires
-            startLoopForUpdates.change_interval(
-                seconds=remaining + 5
-            )  # +5 second buffer
+            startLoopForUpdates.change_interval(seconds=remaining + 5)  # +5 second buffer
             return
 
         # Reset to normal 60 second interval if we were rate limited before
@@ -65,32 +61,24 @@ async def startLoopForUpdates():
         print("Running scheduled task to check races")
         logging.info("=== Starting scheduled race check ===")
         all_channel_ids = sql.get_all_channel_ids()
-        logging.info(
-            f"Found {len(all_channel_ids) if all_channel_ids else 0} channels to check"
-        )
+        logging.info(f"Found {len(all_channel_ids) if all_channel_ids else 0} channels to check")
 
         if all_channel_ids is not None:
             for channel_id in all_channel_ids:
                 all_user_ids = sql.get_users_by_channel_id(channel_id)
-                logging.info(
-                    f"Channel {channel_id}: checking {len(all_user_ids) if all_user_ids else 0} users"
-                )
+                msg = f"Channel {channel_id}: checking {len(all_user_ids) if all_user_ids else 0} users"
+                logging.info(msg)
 
                 for user_id in all_user_ids:
-                    logging.info(
-                        f"Processing user_id={user_id} in channel_id={channel_id}"
-                    )
+                    logging.info(f"Processing user_id={user_id} in channel_id={channel_id}")
 
                     # Check rate limit before processing each user
                     if irApi.is_rate_limited():
                         remaining = irApi.get_rate_limit_remaining()
                         minutes = remaining // 60
-                        print(
-                            f"[RATE LIMITED] Rate limit hit mid-check - pausing for {remaining} seconds ({minutes} minutes)"
-                        )
-                        logging.info(
-                            f"Rate limit hit during user processing - pausing for {remaining} seconds"
-                        )
+                        msg = f"[RATE LIMITED] Rate limit hit mid-check - pausing for {remaining} seconds ({minutes} minutes)"
+                        print(msg)
+                        logging.info(msg)
 
                         # Change loop interval to wake up when rate limit expires
                         startLoopForUpdates.change_interval(
@@ -108,15 +96,11 @@ async def startLoopForUpdates():
 
 
 async def getUserRaceDataAndPost(channel_id, user_id):
-    logging.info(
-        f"getUserRaceDataAndPost called for user_id={user_id}, channel_id={channel_id}"
-    )
+    logging.info(f"getUserRaceDataAndPost called for user_id={user_id}, channel_id={channel_id}")
 
     # Run blocking API call in thread pool to avoid blocking event loop
     loop = asyncio.get_event_loop()
-    last_race = await loop.run_in_executor(
-        executor, irApi.getLastRaceIfNew, user_id, channel_id
-    )
+    last_race = await loop.run_in_executor(executor, irApi.getLastRaceIfNew, user_id, channel_id)
 
     if last_race is not None:
         logging.info(f"New race found for user_id={user_id}, preparing message")
@@ -128,9 +112,8 @@ async def getUserRaceDataAndPost(channel_id, user_id):
 
         # Check if race data was successfully retrieved
         if driver_race_result_msg is None:
-            logging.warning(
-                f"Failed to get race data for user_id={user_id}, skipping message send"
-            )
+            msg = f"Failed to get race data for user_id={user_id}, skipping message send"
+            logging.warning(msg)
             return
 
         print(f"Attempting to send message to channel_id: {channel_id}")
@@ -158,12 +141,8 @@ async def getUserRaceDataAndPost(channel_id, user_id):
             logging.info(f"Message successfully sent to channel {channel_id}")
             print(f"Message sent to channel {channel_id}")
         except discord.Forbidden:
-            logging.error(
-                f"Bot does not have permission to send messages in channel {channel_id}."
-            )
-            print(
-                f"Bot does not have permission to send messages in channel {channel_id}."
-            )
+            logging.error(f"Bot does not have permission to send messages in channel {channel_id}.")
+            print(f"Bot does not have permission to send messages in channel {channel_id}.")
         except discord.HTTPException as e:
             logging.exception(e)
             logging.error(f"Failed to send message due to HTTP error: {e}")
@@ -180,9 +159,7 @@ async def addUser(ctx, arg):
         try:
             cust_id = int(arg)
             if cust_id <= 0:
-                await ctx.send(
-                    f"Invalid User ID: {arg}. Please provide a positive number."
-                )
+                await ctx.send(f"Invalid User ID: {arg}. Please provide a positive number.")
                 return
         except ValueError:
             await ctx.send(f"Invalid User ID: {arg}. Please provide a valid number.")
@@ -192,9 +169,7 @@ async def addUser(ctx, arg):
         if irApi.is_rate_limited():
             remaining = irApi.get_rate_limit_remaining()
             minutes = remaining // 60
-            await ctx.send(
-                f"Bot is currently rate limited. Please try again in {minutes} minutes."
-            )
+            await ctx.send(f"Bot is currently rate limited. Please try again in {minutes} minutes.")
             return
 
         # Run blocking API call in thread pool

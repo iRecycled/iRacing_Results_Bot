@@ -6,11 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Use INFO for debugging, WARNING for production
-LOG_LEVEL = (
-    logging.INFO
-    if os.getenv("DEBUG_MODE", "true").lower() == "true"
-    else logging.WARNING
-)
+LOG_LEVEL = logging.INFO if os.getenv("DEBUG_MODE", "true").lower() == "true" else logging.WARNING
 
 
 def setup_logging():
@@ -42,9 +38,7 @@ def setup_logging():
     )
 
     # Set formatter
-    formatter = logging.Formatter(
-        fmt="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:%S"
-    )
+    formatter = logging.Formatter(fmt="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:%S")
     handler.setFormatter(formatter)
 
     # Add handler to logger

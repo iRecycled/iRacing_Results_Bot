@@ -103,9 +103,7 @@ def save_user_display_name(user_id, display_name):
 def get_display_name(user_id):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT display_name FROM user_channels WHERE user_id=?", (str(user_id),)
-    )
+    cursor.execute("SELECT display_name FROM user_channels WHERE user_id=?", (str(user_id),))
     result = cursor.fetchone()
     return result[0] if result else None
 
@@ -131,9 +129,7 @@ def get_last_race_time(user_id, channel_id):
 def get_users_by_channel_id(channel_id):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT user_id FROM user_channels WHERE channel_id=?", (str(channel_id),)
-    )
+    cursor.execute("SELECT user_id FROM user_channels WHERE channel_id=?", (str(channel_id),))
     result = cursor.fetchall()
     return [row[0] for row in result]
 
