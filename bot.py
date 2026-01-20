@@ -1,8 +1,8 @@
 from discord.ext import commands, tasks
 import discord
 import os
-import iRacingApi as ira
-import iRacingLaps as laps
+import iRacingApi as irApi
+import iRacingLaps as irLaps
 import sqlCommands as sql
 import logging
 import asyncio
@@ -42,8 +42,8 @@ async def on_ready():
 async def startLoopForUpdates():
     try:
         # Check rate limit status before starting
-        if ira.is_rate_limited():
-            remaining = ira.get_rate_limit_remaining()
+        if irApi.is_rate_limited():
+            remaining = irApi.get_rate_limit_remaining()
             minutes = remaining // 60
             print(
                 f"[RATE LIMITED] Pausing race checks for {remaining} seconds ({minutes} minutes)"
@@ -82,8 +82,8 @@ async def startLoopForUpdates():
                     )
 
                     # Check rate limit before processing each user
-                    if ira.is_rate_limited():
-                        remaining = ira.get_rate_limit_remaining()
+                    if irApi.is_rate_limited():
+                        remaining = irApi.get_rate_limit_remaining()
                         minutes = remaining // 60
                         print(
                             f"[RATE LIMITED] Rate limit hit mid-check - pausing for {remaining} seconds ({minutes} minutes)"
@@ -115,7 +115,7 @@ async def getUserRaceDataAndPost(channel_id, user_id):
     # Run blocking API call in thread pool to avoid blocking event loop
     loop = asyncio.get_event_loop()
     last_race = await loop.run_in_executor(
-        executor, ira.getLastRaceIfNew, user_id, channel_id
+        executor, irApi.getLastRaceIfNew, user_id, channel_id
     )
 
     if last_race is not None:
@@ -123,7 +123,7 @@ async def getUserRaceDataAndPost(channel_id, user_id):
 
         # Run blocking API call in thread pool
         driver_race_result_msg = await loop.run_in_executor(
-            executor, ira.raceAndDriverData, last_race, user_id
+            executor, irApi.raceAndDriverData, last_race, user_id
         )
 
         # Check if race data was successfully retrieved
@@ -143,16 +143,15 @@ async def getUserRaceDataAndPost(channel_id, user_id):
             return
 
         try:
-            logging.info(f"Sending race result message to channel {channel_id}")
-            await channel.send(driver_race_result_msg)
-
             logging.info(f"Generating lap chart for user_id={user_id}")
             # Run blocking chart generation in thread pool
             chart_success = await loop.run_in_executor(
-                executor, laps.getLapsChart, last_race, user_id
+                executor, irLaps.getLapsChart, last_race, user_id
             )
             if chart_success:
                 with open("race_plot.png", "rb") as pic:
+                    logging.info(f"Sending race result message to channel {channel_id}")
+                    await channel.send(driver_race_result_msg)
                     await channel.send(file=discord.File(pic))
                 logging.info(f"Lap chart sent to channel {channel_id}")
 
@@ -190,8 +189,8 @@ async def addUser(ctx, arg):
             return
 
         # Check if rate limited
-        if ira.is_rate_limited():
-            remaining = ira.get_rate_limit_remaining()
+        if irApi.is_rate_limited():
+            remaining = irApi.get_rate_limit_remaining()
             minutes = remaining // 60
             await ctx.send(
                 f"Bot is currently rate limited. Please try again in {minutes} minutes."
@@ -200,7 +199,7 @@ async def addUser(ctx, arg):
 
         # Run blocking API call in thread pool
         loop = asyncio.get_event_loop()
-        driver_name = await loop.run_in_executor(executor, ira.getDriverName, arg)
+        driver_name = await loop.run_in_executor(executor, irApi.getDriverName, arg)
         if driver_name and sql.save_user_channel(arg, channel_id, driver_name):
             await ctx.send(f"Driver: {driver_name} ({arg}) has been added")
         else:
@@ -225,7 +224,7 @@ async def removeUser(ctx, arg):
 #     if channel_id:
 #         # Run blocking API call in thread pool
 #         loop = asyncio.get_event_loop()
-#         result = await loop.run_in_executor(executor, ira.test_api_request)
+#         result = await loop.run_in_executor(executor, irApi.test_api_request)
 #         await ctx.send(result)
 
 bot.run(TOKEN)

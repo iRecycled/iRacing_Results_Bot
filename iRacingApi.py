@@ -390,7 +390,7 @@ class _AuthenticatedClientWrapper:
                 return attr(*args, **kwargs)
             except (AccessTokenInvalid, JSONDecodeError) as e:
                 # Token expired or session issue, re-authenticate and retry
-                logging.warning(
+                logging.info(
                     f"Token/session issue during {name} call ({type(e).__name__}) - re-authenticating"
                 )
                 # Clear both the inner client and the wrapper so we start fresh
