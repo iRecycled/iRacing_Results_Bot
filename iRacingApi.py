@@ -4,7 +4,6 @@ import logging
 import time
 from datetime import datetime
 from collections import namedtuple
-import logging_config
 from iRacingAuthWrapper import (
     login,
     get_authenticated_client,
@@ -13,8 +12,6 @@ from iRacingAuthWrapper import (
     _client_manager,
 )
 from rateLimit import RateLimitError
-
-logging_config.setup_logging()
 
 raceAndDriverObj = namedtuple(
     "raceAndDriverData",
@@ -145,6 +142,152 @@ def getLastRaceByCustId(cust_id):
         return None
 
 
+def getRaceBySubsessionId(subsession_id, cust_id):
+    """Get race data from a subsession ID for posting.
+
+    Uses stats_member_recent_races() to get pre-formatted driver data
+    matching the subsession_id. This ensures compatibility with the
+    main loop's data structure and avoids manual parsing of result() data.
+
+    Args:
+        subsession_id: The subsession ID to fetch
+        cust_id: The customer ID (used to fetch recent races)
+
+    Returns:
+        Race data dict (from stats_member_recent_races) or None if not found
+    """
+    # Check rate limit before making API calls
+    if is_rate_limited():
+        raise RateLimitError(get_rate_limit_remaining())
+
+    try:
+        logging.info(f"Getting race for subsession_id={subsession_id}, cust_id={cust_id}")
+        ir_client = get_authenticated_client()
+
+        if ir_client is None:
+            logging.error(f"Failed to login to iRacing API for subsession_id={subsession_id}")
+            return None
+
+        # Fetch member's recent races using stats API (same as main loop)
+        recent_races_data = ir_client.stats_member_recent_races(cust_id=cust_id)
+        if not recent_races_data:
+            logging.error(f"No recent races found for cust_id={cust_id}")
+            return None
+
+        # Find the race matching this subsession_id in recent races
+        races = recent_races_data.get("races", [])
+        race_data = next((r for r in races if r.get("subsession_id") == subsession_id), None)
+
+        if not race_data:
+            # Fallback: For team events, try searching by team_id in search_series()
+            logging.info(
+                f"Subsession {subsession_id} not found in recent races, trying team search..."
+            )
+
+            # We need to search series results, but we don't have season info yet
+            # So we'll search recent races for any race from this cust, get a season_year/quarter
+            # and use that to search for the team's races
+            if races:
+                # Use season info from the most recent race as reference
+                reference_race = races[0]
+                season_year = reference_race.get("season_year")
+                season_quarter = reference_race.get("season_quarter")
+
+                if season_year and season_quarter:
+                    logging.info(
+                        f"Searching series results for season {season_year} Q{season_quarter}"
+                    )
+                    try:
+                        # Search series results by cust_id to find the target subsession
+                        series_results = ir_client.search_series(
+                            season_year=season_year, season_quarter=season_quarter, cust_id=cust_id
+                        )
+
+                        if series_results:
+                            # Results can be paginated, check all results
+                            results_list = series_results.get("results", [])
+                            race_data = next(
+                                (
+                                    r
+                                    for r in results_list
+                                    if r.get("subsession_id") == subsession_id
+                                ),
+                                None,
+                            )
+
+                            if race_data:
+                                logging.info("Found race via series search")
+                    except Exception as e:
+                        logging.debug(f"Series search failed: {e}")
+
+            if not race_data:
+                # Final fallback: Get season info from result() API and search with that
+                logging.info("Trying to get season info from result() API...")
+                try:
+                    result_data = ir_client.result(subsession_id)
+                    if result_data:
+                        season_year = result_data.get("season_year")
+                        season_quarter = result_data.get("season_quarter")
+
+                        if season_year and season_quarter:
+                            logging.info(
+                                f"Found season info: {season_year} Q{season_quarter}, searching series..."
+                            )
+                            series_results = ir_client.search_series(
+                                season_year=season_year,
+                                season_quarter=season_quarter,
+                                cust_id=cust_id,
+                            )
+
+                            if series_results:
+                                results_list = series_results.get("results", [])
+                                race_data = next(
+                                    (
+                                        r
+                                        for r in results_list
+                                        if r.get("subsession_id") == subsession_id
+                                    ),
+                                    None,
+                                )
+
+                                if race_data:
+                                    logging.info("Found race via season search")
+                        else:
+                            logging.warning("Race may be older than 90 days (search_series limit)")
+                except Exception as e:
+                    logging.debug(f"Result API fallback search failed: {e}")
+
+            if not race_data:
+                logging.error(
+                    f"Subsession {subsession_id} not found in recent races, series search, or result API for cust_id={cust_id}"
+                )
+                return None
+
+        # Add display_name from API since stats_member_recent_races doesn't include it
+        # First try database (for users added via /addUser), then fall back to API
+        import sqlCommands as sql
+
+        display_name = sql.get_display_name(cust_id)
+        if not display_name:
+            # For arbitrary cust_ids (like in /postRace), query the API directly
+            display_name = getDriverName(cust_id)
+        race_data["display_name"] = display_name
+
+        logging.info(f"Found race: {race_data.get('series_name')} (subsession_id={subsession_id})")
+        return race_data
+
+    except AccessTokenInvalid:
+        logging.warning(
+            f"Access token invalid during API call for subsession_id={subsession_id} - clearing client"
+        )
+        _client_manager.clear_client()
+        return None
+    except Exception as e:
+        logging.exception(e)
+        logging.error(f"Error in getRaceBySubsessionId for subsession_id={subsession_id}")
+        return None
+
+
 def saveLastRaceTimeByCustId(cust_id, race_time, channel_id):
     return sql.save_user_last_race_time(cust_id, race_time, channel_id)
 
@@ -178,7 +321,10 @@ def raceAndDriverData(race, cust_id):
             logging.error(f"Failed to get subsession data for cust_id={cust_id}")
             return None
 
-        display_name = sql.get_display_name(cust_id)
+        # Use display_name from race data (from /postRace API) or fall back to database
+        display_name = race.get("display_name")
+        if not display_name:
+            display_name = sql.get_display_name(cust_id)
         series_name = race.get("series_name")
         car_id = race.get("car_id")
         allCarsData = get_cached_cars()

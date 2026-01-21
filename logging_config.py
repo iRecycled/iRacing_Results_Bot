@@ -11,12 +11,16 @@ LOG_LEVEL = logging.INFO if os.getenv("DEBUG_MODE", "true").lower() == "true" el
 
 def setup_logging():
     """
-    Configure logging with RotatingFileHandler to prevent log files from growing too large.
+    Configure logging with file (all levels) and console (errors only) handlers.
 
     Configuration:
-    - maxBytes: 1MB per log file
-    - backupCount: Keep 3 backup files (total ~3-4MB max)
-    - Log files: bot.log, bot.log.1, bot.log.2, bot.log.3
+    - File: RotatingFileHandler with all logs
+      - maxBytes: 1MB per log file
+      - backupCount: Keep 2 backup files (total ~3MB max)
+      - Log files: bot.log, bot.log.1, bot.log.2
+      - Level: INFO (or WARNING if not in DEBUG_MODE)
+    - Console: StreamHandler for errors only
+      - Level: ERROR
     """
     # Get root logger
     logger = logging.getLogger()
@@ -27,21 +31,24 @@ def setup_logging():
 
     logger.setLevel(LOG_LEVEL)
 
-    # Create rotating file handler
-    # maxBytes=1*1024*1024 = 1MB per file
-    # backupCount=2 means keep 2 old files
-    handler = RotatingFileHandler(
+    # Set formatter for both handlers
+    formatter = logging.Formatter(fmt="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:%S")
+
+    # Create rotating file handler (all messages)
+    file_handler = RotatingFileHandler(
         filename="bot.log",
         maxBytes=1 * 1024 * 1024,  # 1MB
         backupCount=2,
         encoding="utf-8",
     )
+    file_handler.setLevel(LOG_LEVEL)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
 
-    # Set formatter
-    formatter = logging.Formatter(fmt="%(asctime)s - %(message)s", datefmt="%d-%b-%y %H:%M:%S")
-    handler.setFormatter(formatter)
-
-    # Add handler to logger
-    logger.addHandler(handler)
+    # Create console handler (errors only)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.ERROR)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
     return logger

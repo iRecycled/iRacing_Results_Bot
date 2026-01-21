@@ -1,13 +1,9 @@
 from iracingdataapi.exceptions import AccessTokenInvalid
 import iRacingApi as ira
 import logging
-import logging_config
 import matplotlib.pyplot as plt
 from rateLimit import RateLimitError
 from iRacingAuthWrapper import is_rate_limited, get_rate_limit_remaining
-
-# Setup rotating file handler logging
-logging_config.setup_logging()
 
 # Chart styling constants
 BACKGROUND_COLOR = "#40444B"  # Slightly lighter than Discord's dark mode

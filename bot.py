@@ -15,8 +15,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Setup rotating file handler logging
+# Setup rotating file handler logging (do this FIRST, before importing other modules)
 logging_config.setup_logging()
+
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
@@ -155,14 +156,121 @@ async def removeUser(ctx, arg):
         else:
             await ctx.send(f"Failed to remove User Id {arg}.")
 
+@bot.command()
+@rate_limit_handler
+async def postRace(ctx, cust_id: str, subsession_id: str):
+    """Post a specific race by cust_id and subsession_id.
+    Usage: /postRace <cust_id> <subsession_id>
+    """
+    try:
+        channel_id = ctx.channel.id
 
-# @bot.command()
-# async def test(ctx):
-#     channel_id = ctx.channel.id  # Get the channel ID where the command was sent
-#     if channel_id:
-#         # Run blocking API call in thread pool
-#         loop = asyncio.get_event_loop()
-#         result = await loop.run_in_executor(executor, irApi.test_api_request)
-#         await ctx.send(result)
+        # Validate inputs
+        try:
+            cust_id = int(cust_id)
+            subsession_id = int(subsession_id)
+            if cust_id <= 0 or subsession_id <= 0:
+                await ctx.send("Invalid IDs: Please provide positive numbers.")
+                return
+        except ValueError:
+            await ctx.send(
+                "Invalid IDs: Please provide valid numbers for both cust_id and subsession_id."
+            )
+            return
+
+        logging.info(f"Posting race: cust_id={cust_id}, subsession_id={subsession_id}")
+
+        # Send initial status message
+        status_msg = await ctx.send("⏳ Working on it... This may take a moment")
+
+        try:
+            # Step 1: Get race data for this subsession
+            loop = asyncio.get_event_loop()
+            race_data = await loop.run_in_executor(
+                executor, irApi.getRaceBySubsessionId, subsession_id, cust_id
+            )
+
+            if race_data is None:
+                await status_msg.delete()
+                error_msg = (
+                    f"❌ Could not find subsession {subsession_id} for cust_id {cust_id}.\n\n"
+                    f"Possible reasons:\n"
+                    f"• Race is older than 90 days (iRacing search limit)\n"
+                    f"• Race was not found in your recent races\n"
+                    f"• Driver did not participate in this subsession\n"
+                    f"• Invalid subsession or customer ID"
+                )
+                await ctx.send(error_msg)
+                logging.warning(
+                    f"Failed to get race data for subsession_id={subsession_id}, cust_id={cust_id}"
+                )
+                return
+
+            logging.info(f"Race data retrieved for subsession_id={subsession_id}")
+
+            # Step 2: Format race results message
+            formatted_message = await loop.run_in_executor(
+                executor, irApi.raceAndDriverData, race_data, cust_id
+            )
+
+            if formatted_message is None:
+                await status_msg.delete()
+                error_msg = (
+                    f"❌ Failed to format race data for subsession {subsession_id}.\n\n"
+                    f"This usually means:\n"
+                    f"• Car data is missing or invalid\n"
+                    f"• Race data structure is incomplete\n"
+                    f"• An unexpected error occurred during formatting"
+                )
+                await ctx.send(error_msg)
+                logging.warning(
+                    f"Failed to format race data for subsession_id={subsession_id}, cust_id={cust_id}"
+                )
+                return
+
+            # Step 3: Generate lap chart
+            chart_path = None
+            chart_success = await loop.run_in_executor(
+                executor, irLaps.getLapsChart, race_data, cust_id
+            )
+            if chart_success:
+                chart_path = "race_plot.png"
+                logging.info(f"Chart generated for subsession_id={subsession_id}")
+            else:
+                logging.warning(f"Failed to generate chart for subsession_id={subsession_id}")
+
+            # Step 4: Delete status message and post to Discord
+            channel = bot.get_channel(int(channel_id))
+            if channel is None:
+                await status_msg.delete()
+                await ctx.send("Failed to find the channel to post to.")
+                logging.error(f"Channel {channel_id} not found")
+                return
+
+            await status_msg.delete()
+            success = await postRaceToDiscord(channel, formatted_message, chart_path)
+            if success:
+                logging.info(
+                    f"Successfully posted race for subsession_id={subsession_id}, cust_id={cust_id}"
+                )
+            else:
+                await ctx.send("Failed to post race to Discord.")
+                logging.error(
+                    f"Failed to post race for subsession_id={subsession_id}, cust_id={cust_id}"
+                )
+
+        except Exception:
+            # Clean up status message if an error occurs
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+            raise
+
+    except Exception as e:
+        logging.exception(e)
+        logging.error(f"Error in postRace command: {e}")
+        await ctx.send(f"An error occurred while posting the race: {str(e)}")
+
 
 bot.run(TOKEN)
