@@ -16,14 +16,18 @@ class RateLimitError(Exception):
         super().__init__(f"Rate limited. Retry after {seconds_remaining} seconds.")
 
 
-def retry_on_transient_error(max_retries=3, base_delay=1):
+def retry_on_transient_error(max_retries=4, base_delay=60):
     """Decorator that retries on transient HTTP errors (503, 504, 429, etc.).
 
     Uses exponential backoff: delay = base_delay * (2 ^ attempt_number)
+    Total max wait time: ~15 minutes before giving up.
+
+    Starts with 60s delay to minimize OAuth token consumption while giving
+    the iRacing API time to recover from brief outages.
 
     Args:
-        max_retries: Maximum number of retry attempts (default 3)
-        base_delay: Initial delay in seconds before first retry (default 1)
+        max_retries: Maximum number of retry attempts (default 4)
+        base_delay: Initial delay in seconds before first retry (default 60)
     """
 
     def decorator(func):
@@ -46,7 +50,7 @@ def retry_on_transient_error(max_retries=3, base_delay=1):
                         attempt += 1
                         delay = base_delay * (2 ** (attempt - 1))
                         logging.warning(
-                            f"Transient API error ({error_str}) - Retrying in {delay}s (attempt {attempt}/{max_retries - 1})"
+                            f"Transient API error in {func.__name__} ({error_str}) - Retrying in {delay}s (attempt {attempt}/{max_retries - 1})"
                         )
                         time.sleep(delay)
                         continue

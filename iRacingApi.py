@@ -141,6 +141,8 @@ def getLastRaceByCustId(cust_id):
     except Exception as e:
         logging.exception(e)
         logging.error(f"Error in getLastRaceByCustId for cust_id={cust_id}")
+        # After transient errors, clear client to ensure fresh connection on next attempt
+        _client_manager.clear_client()
         return None
 
 
@@ -288,6 +290,8 @@ def getRaceBySubsessionId(subsession_id, cust_id):
     except Exception as e:
         logging.exception(e)
         logging.error(f"Error in getRaceBySubsessionId for subsession_id={subsession_id}")
+        # After transient errors, clear client to ensure fresh connection on next attempt
+        _client_manager.clear_client()
         return None
 
 
@@ -581,6 +585,8 @@ def getSubsessionDataByUserId(subsession_id, user_id):
         logging.error(
             f"Error in getSubsessionDataByUserId for subsession_id={subsession_id}, user_id={user_id}"
         )
+        # After transient errors, clear client to ensure fresh connection on next attempt
+        _client_manager.clear_client()
         return None
 
 
