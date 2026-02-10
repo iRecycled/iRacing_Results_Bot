@@ -1,6 +1,7 @@
 import functools
 import asyncio
 import logging
+import time
 
 
 class RateLimitError(Exception):
@@ -13,6 +14,48 @@ class RateLimitError(Exception):
     def __init__(self, seconds_remaining):
         self.seconds_remaining = seconds_remaining
         super().__init__(f"Rate limited. Retry after {seconds_remaining} seconds.")
+
+
+def retry_on_transient_error(max_retries=3, base_delay=1):
+    """Decorator that retries on transient HTTP errors (503, 504, 429, etc.).
+
+    Uses exponential backoff: delay = base_delay * (2 ^ attempt_number)
+
+    Args:
+        max_retries: Maximum number of retry attempts (default 3)
+        base_delay: Initial delay in seconds before first retry (default 1)
+    """
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            attempt = 0
+            while attempt < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except RuntimeError as e:
+                    # Check if this is an HTTP error we should retry
+                    error_str = str(e)
+                    should_retry = False
+
+                    # Look for 503, 504, 429 in the error message
+                    if any(code in error_str for code in ["503", "504", "429", "502"]):
+                        should_retry = True
+
+                    if should_retry and attempt < max_retries - 1:
+                        attempt += 1
+                        delay = base_delay * (2 ** (attempt - 1))
+                        logging.warning(
+                            f"Transient API error ({error_str}) - Retrying in {delay}s (attempt {attempt}/{max_retries - 1})"
+                        )
+                        time.sleep(delay)
+                        continue
+                    else:
+                        raise
+
+        return wrapper
+
+    return decorator
 
 
 def rate_limit_handler(func):

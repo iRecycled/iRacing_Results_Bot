@@ -156,6 +156,7 @@ async def removeUser(ctx, arg):
         else:
             await ctx.send(f"Failed to remove User Id {arg}.")
 
+
 @bot.command()
 @rate_limit_handler
 async def postRace(ctx, cust_id: str, subsession_id: str):

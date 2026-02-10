@@ -11,7 +11,7 @@ from iRacingAuthWrapper import (
     get_rate_limit_remaining,
     _client_manager,
 )
-from rateLimit import RateLimitError
+from rateLimit import RateLimitError, retry_on_transient_error
 
 raceAndDriverObj = namedtuple(
     "raceAndDriverData",
@@ -43,6 +43,7 @@ _cars_cache_time = 0
 CARS_CACHE_DURATION = 3600  # Cache for 1 hour
 
 
+@retry_on_transient_error(max_retries=3, base_delay=1)
 def get_cached_cars():
     """Get car data with caching to reduce API calls"""
     global _cars_cache, _cars_cache_time
@@ -104,6 +105,7 @@ def getLastRaceIfNew(cust_id, channel_id):
         return None
 
 
+@retry_on_transient_error(max_retries=3, base_delay=1)
 def getLastRaceByCustId(cust_id):
     # Check rate limit before making API calls
     if is_rate_limited():
@@ -142,6 +144,7 @@ def getLastRaceByCustId(cust_id):
         return None
 
 
+@retry_on_transient_error(max_retries=3, base_delay=1)
 def getRaceBySubsessionId(subsession_id, cust_id):
     """Get race data from a subsession ID for posting.
 
@@ -300,6 +303,7 @@ def lastRaceTimeMatching(cust_id, race_time, channel_id):
     return saved_last_race_time == race_time
 
 
+@retry_on_transient_error(max_retries=3, base_delay=1)
 def raceAndDriverData(race, cust_id):
     # Check rate limit before making API calls
     if is_rate_limited():
@@ -399,6 +403,7 @@ def raceAndDriverData(race, cust_id):
         return None
 
 
+@retry_on_transient_error(max_retries=3, base_delay=1)
 def getDriverName(cust_id):
     # Check rate limit before making API calls
     if is_rate_limited():
@@ -490,6 +495,7 @@ def _calculate_team_totals(team_entry):
     return team_totals
 
 
+@retry_on_transient_error(max_retries=3, base_delay=1)
 def getSubsessionDataByUserId(subsession_id, user_id):
     """Fetch subsession data for a specific driver.
     Handles both individual races and team races (e.g., Daytona 24h)."""
