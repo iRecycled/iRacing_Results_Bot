@@ -13,6 +13,65 @@ from json.decoder import JSONDecodeError
 
 load_dotenv()
 
+RATE_LIMIT_LOG = "rate_limits.log"
+
+# Track API request count since last reset/startup
+_api_request_count = 0
+_api_request_count_reset_time = time.time()
+
+
+def track_api_request():
+    """Increment the API request counter. Call this before each iRacing API call."""
+    global _api_request_count
+    _api_request_count += 1
+
+
+def get_api_request_count():
+    """Get the current request count and how long the window has been open."""
+    elapsed = int(time.time() - _api_request_count_reset_time)
+    return _api_request_count, elapsed
+
+
+def _reset_api_request_count():
+    """Reset the counter (called when rate limit is hit, so next window starts fresh)."""
+    global _api_request_count, _api_request_count_reset_time
+    _api_request_count = 0
+    _api_request_count_reset_time = time.time()
+
+
+def _log_rate_limit_event(retry_after, resets_in, error_response):
+    """Append rate limit event to a dedicated log file for easy monitoring."""
+    try:
+        count, elapsed_seconds = get_api_request_count()
+        elapsed_minutes = elapsed_seconds / 60
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(RATE_LIMIT_LOG, "a") as f:
+            f.write(
+                f"{timestamp} | requests_made={count} in {elapsed_minutes:.1f}min "
+                f"| retry_after={retry_after}s | resets_in={resets_in}s\n"
+            )
+        _reset_api_request_count()
+    except Exception as e:
+        logging.warning(f"Failed to write rate limit log: {e}")
+
+
+def _log_token_rate_limit_headers(response):
+    """Log the rate limit headers from the /token endpoint to rate_limits.log."""
+    try:
+        limit = response.headers.get("RateLimit-Limit")
+        remaining = response.headers.get("RateLimit-Remaining")
+        reset = response.headers.get("RateLimit-Reset")
+
+        if limit or remaining or reset:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(RATE_LIMIT_LOG, "a") as f:
+                f.write(
+                    f"{timestamp} | TOKEN endpoint | limit={limit} remaining={remaining} reset={reset}s\n"
+                )
+    except Exception as e:
+        logging.warning(f"Failed to log token rate limit headers: {e}")
+
+
 # OAuth credentials
 CLIENT_ID = os.getenv("IRACING_CLIENT_ID")
 CLIENT_SECRET = os.getenv("IRACING_CLIENT_SECRET")
@@ -123,13 +182,15 @@ class iRacingClientManager:
         self._rate_limit_until = current_time + resets_in + 10
         self._rate_limit_reset = current_time + resets_in
 
-        logging.info(
+        msg = (
             f"Rate limited! Blocking OAuth attempts for {resets_in} seconds "
             f"({resets_in // 60} minutes). Will retry after {datetime.fromtimestamp(self._rate_limit_until).strftime('%H:%M:%S')}"
         )
-        print(
-            f"[RATE LIMIT] OAuth blocked for {resets_in // 60} minutes until {datetime.fromtimestamp(self._rate_limit_until).strftime('%H:%M:%S')}"
-        )
+        logging.info(msg)
+        print(f"[RATE LIMIT] {msg}")
+
+        # Log to dedicated rate limit file
+        _log_rate_limit_event(retry_after, resets_in, error_response)
 
     def is_rate_limited(self):
         """Check if we're currently rate limited"""
@@ -177,6 +238,9 @@ class iRacingClientManager:
             }
 
             response = requests.post(TOKEN_URL, data=data, timeout=20)
+
+            # Log rate limit headers from token endpoint
+            _log_token_rate_limit_headers(response)
 
             if response.status_code == 200:
                 tokens = response.json()
@@ -271,6 +335,7 @@ class _AuthenticatedClientWrapper:
 
         def method_wrapper(*args, **kwargs):
             try:
+                track_api_request()
                 return attr(*args, **kwargs)
             except (AccessTokenInvalid, JSONDecodeError) as e:
                 # Token expired or session issue, re-authenticate and retry
