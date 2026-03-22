@@ -72,6 +72,33 @@ def _log_token_rate_limit_headers(response):
         logging.warning(f"Failed to log token rate limit headers: {e}")
 
 
+def _log_data_api_rate_limit(client, method_name):
+    """Log the rate limit headers from data API calls to rate_limits.log.
+
+    The iracingdataapi client exposes rate limit info via client.rate_limit
+    which reads x-ratelimit-limit, x-ratelimit-remaining, x-ratelimit-reset headers.
+    """
+    try:
+        rl = client.rate_limit
+        if rl is None:
+            return
+
+        limit = rl.limit
+        remaining = rl.remaining
+        reset_seconds = int(rl.seconds_until_reset) if rl.seconds_until_reset else None
+
+        if limit is not None or remaining is not None:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            count, elapsed = get_api_request_count()
+            with open(RATE_LIMIT_LOG, "a") as f:
+                f.write(
+                    f"{timestamp} | DATA API ({method_name}) | limit={limit} remaining={remaining} "
+                    f"reset={reset_seconds}s | requests_this_session={count}\n"
+                )
+    except Exception as e:
+        logging.warning(f"Failed to log data API rate limit: {e}")
+
+
 # OAuth credentials
 CLIENT_ID = os.getenv("IRACING_CLIENT_ID")
 CLIENT_SECRET = os.getenv("IRACING_CLIENT_SECRET")
@@ -336,7 +363,9 @@ class _AuthenticatedClientWrapper:
         def method_wrapper(*args, **kwargs):
             try:
                 track_api_request()
-                return attr(*args, **kwargs)
+                result = attr(*args, **kwargs)
+                _log_data_api_rate_limit(self._client, name)
+                return result
             except (AccessTokenInvalid, JSONDecodeError) as e:
                 # Token expired or session issue, re-authenticate and retry
                 logging.info(
