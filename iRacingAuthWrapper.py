@@ -45,7 +45,7 @@ def _log_rate_limit_event(retry_after, resets_in, error_response):
         count, elapsed_seconds = get_api_request_count()
         elapsed_minutes = elapsed_seconds / 60
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open(RATE_LIMIT_LOG, "a") as f:
+        with open(RATE_LIMIT_LOG, "w") as f:
             f.write(
                 f"{timestamp} | requests_made={count} in {elapsed_minutes:.1f}min "
                 f"| retry_after={retry_after}s | resets_in={resets_in}s\n"
@@ -64,7 +64,7 @@ def _log_token_rate_limit_headers(response):
 
         if limit or remaining or reset:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            with open(RATE_LIMIT_LOG, "a") as f:
+            with open(RATE_LIMIT_LOG, "w") as f:
                 f.write(
                     f"{timestamp} | TOKEN endpoint | limit={limit} remaining={remaining} reset={reset}s\n"
                 )
@@ -85,12 +85,16 @@ def _log_data_api_rate_limit(client, method_name):
 
         limit = rl.limit
         remaining = rl.remaining
-        reset_seconds = int(rl.seconds_until_reset) if rl.seconds_until_reset else None
+        try:
+            secs = rl.seconds_until_reset
+            reset_seconds = max(0, int(secs)) if secs is not None else 0
+        except (TypeError, ValueError):
+            reset_seconds = 0
 
         if limit is not None or remaining is not None:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             count, elapsed = get_api_request_count()
-            with open(RATE_LIMIT_LOG, "a") as f:
+            with open(RATE_LIMIT_LOG, "w") as f:
                 f.write(
                     f"{timestamp} | DATA API ({method_name}) | limit={limit} remaining={remaining} "
                     f"reset={reset_seconds}s | requests_this_session={count}\n"
@@ -434,3 +438,27 @@ def is_rate_limited():
 def get_rate_limit_remaining():
     """Get seconds remaining on rate limit (for external use)"""
     return _client_manager.get_rate_limit_remaining()
+
+
+def get_data_api_rate_limit():
+    """Get the current data API rate limit info from the iracingdataapi client.
+
+    Returns:
+        dict with 'limit', 'remaining', and 'reset_seconds', or None if unavailable.
+    """
+    try:
+        client = _client_manager._client
+        if client is None:
+            return None
+
+        rl = client.rate_limit
+        if rl is None:
+            return None
+
+        return {
+            "limit": rl.limit,
+            "remaining": rl.remaining,
+            "reset_seconds": max(0, int(rl.seconds_until_reset)) if rl.seconds_until_reset else 0,
+        }
+    except Exception:
+        return None

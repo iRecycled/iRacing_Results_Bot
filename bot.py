@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import logging_config
 from rateLimit import rate_limit_handler
 from discordHelpers import postRaceToDiscord
+from iRacingAuthWrapper import get_data_api_rate_limit
 
 from dotenv import load_dotenv
 
@@ -32,9 +33,43 @@ bot = commands.Bot(
 executor = ThreadPoolExecutor(max_workers=3)
 
 # Batching config
-BATCH_SIZE = 10  # Number of drivers to check per tick
+DEFAULT_BATCH_SIZE = 10  # Fallback if rate limit info is unavailable
+API_CALLS_PER_DRIVER = 3  # Approximate API calls per driver (recent_races + result + get_cars)
 REQUEST_DELAY = 2  # Seconds between API calls within a batch
 _batch_index = 0  # Tracks which batch we're on across ticks
+
+
+def _get_dynamic_batch_size(total_drivers):
+    """Calculate batch size based on available API rate limit.
+
+    Uses the remaining API requests to determine how many drivers
+    we can safely process in this tick. Reserves 10% as a buffer.
+    """
+    rate_info = get_data_api_rate_limit()
+
+    if rate_info and rate_info["remaining"] is not None:
+        remaining = rate_info["remaining"]
+        reset_seconds = rate_info.get("reset_seconds", 0)
+
+        # Not enough requests left for even one driver — wait for reset
+        if remaining < API_CALLS_PER_DRIVER:
+            logging.info(
+                f"Rate limit too low to process any drivers "
+                f"(remaining={remaining}, need={API_CALLS_PER_DRIVER}, resets in {reset_seconds}s) — skipping tick"
+            )
+            return 0
+
+        # Reserve 10% buffer for retries
+        usable = int(remaining * 0.9)
+        batch_size = max(1, usable // API_CALLS_PER_DRIVER)
+        logging.info(
+            f"Dynamic batch size: {batch_size} drivers "
+            f"(API remaining={remaining}, usable={usable}, ~{API_CALLS_PER_DRIVER} calls/driver)"
+        )
+        return min(batch_size, total_drivers)
+
+    logging.info(f"Rate limit info unavailable, using default batch size: {DEFAULT_BATCH_SIZE}")
+    return DEFAULT_BATCH_SIZE
 
 
 @bot.event
@@ -56,18 +91,25 @@ async def startLoopForUpdates():
         if total == 0:
             return
 
+        # Dynamically size the batch based on API rate limit
+        batch_size = _get_dynamic_batch_size(total)
+
+        if batch_size == 0:
+            logging.info("=== Skipping tick — waiting for rate limit reset ===")
+            return
+
         # Get the batch for this tick
         start = _batch_index
-        end = min(start + BATCH_SIZE, total)
+        end = min(start + batch_size, total)
         batch = all_pairs[start:end]
 
         # Advance index for next tick, wrap around when we've covered everyone
         _batch_index = end if end < total else 0
 
         logging.info(
-            f"=== Batch check: drivers {start + 1}-{end} of {total} ==="
+            f"=== Batch check: drivers {start + 1}-{end} of {total} (batch_size={batch_size}) ==="
         )
-        print(f"Checking drivers {start + 1}-{end} of {total}")
+        print(f"Checking drivers {start + 1}-{end} of {total} (batch_size={batch_size})")
 
         for user_id, channel_id in batch:
             logging.info(f"Processing user_id={user_id} in channel_id={channel_id}")
