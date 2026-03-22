@@ -31,6 +31,11 @@ bot = commands.Bot(
 # Thread pool for running blocking iRacing API calls
 executor = ThreadPoolExecutor(max_workers=3)
 
+# Batching config
+BATCH_SIZE = 10  # Number of drivers to check per tick
+REQUEST_DELAY = 2  # Seconds between API calls within a batch
+_batch_index = 0  # Tracks which batch we're on across ticks
+
 
 @bot.event
 async def on_ready():
@@ -43,24 +48,34 @@ async def on_ready():
 
 @tasks.loop(seconds=60)
 async def startLoopForUpdates():
+    global _batch_index
     try:
-        print("Running scheduled task to check races")
-        logging.info("=== Starting scheduled race check ===")
-        all_channel_ids = sql.get_all_channel_ids()
-        logging.info(f"Found {len(all_channel_ids) if all_channel_ids else 0} channels to check")
+        all_pairs = sql.get_all_user_channel_pairs()
+        total = len(all_pairs)
 
-        if all_channel_ids is not None:
-            for channel_id in all_channel_ids:
-                all_user_ids = sql.get_users_by_channel_id(channel_id)
-                msg = f"Channel {channel_id}: checking {len(all_user_ids) if all_user_ids else 0} users"
-                logging.info(msg)
+        if total == 0:
+            return
 
-                for user_id in all_user_ids:
-                    logging.info(f"Processing user_id={user_id} in channel_id={channel_id}")
-                    await processAndPostRace(channel_id, user_id)
+        # Get the batch for this tick
+        start = _batch_index
+        end = min(start + BATCH_SIZE, total)
+        batch = all_pairs[start:end]
 
-        print("Finished scheduled task, waiting...")
-        logging.info("=== Finished scheduled race check ===")
+        # Advance index for next tick, wrap around when we've covered everyone
+        _batch_index = end if end < total else 0
+
+        logging.info(
+            f"=== Batch check: drivers {start + 1}-{end} of {total} ==="
+        )
+        print(f"Checking drivers {start + 1}-{end} of {total}")
+
+        for user_id, channel_id in batch:
+            logging.info(f"Processing user_id={user_id} in channel_id={channel_id}")
+            await processAndPostRace(channel_id, user_id)
+            # Small delay between requests to avoid bursting
+            await asyncio.sleep(REQUEST_DELAY)
+
+        logging.info("=== Batch check complete ===")
     except Exception as e:
         logging.exception(e)
         logging.error("Error in startLoopForUpdates")

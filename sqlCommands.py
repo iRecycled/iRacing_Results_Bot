@@ -144,6 +144,15 @@ def get_all_channel_ids():
     return None
 
 
+def get_all_user_channel_pairs():
+    """Get all unique (user_id, channel_id) pairs for batch processing."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, channel_id FROM user_channels")
+    result = cursor.fetchall()
+    return [(row[0], row[1]) for row in result] if result else []
+
+
 def delete_all_records():
     try:
         conn = get_connection()
