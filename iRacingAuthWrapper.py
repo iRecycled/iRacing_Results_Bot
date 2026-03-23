@@ -15,41 +15,13 @@ from logging_config import append_rate_limit_log
 load_dotenv()
 
 
-# Track API request count since last reset/startup
-_api_request_count = 0
-_api_request_count_reset_time = time.time()
-
-
-def track_api_request():
-    """Increment the API request counter. Call this before each iRacing API call."""
-    global _api_request_count
-    _api_request_count += 1
-
-
-def get_api_request_count():
-    """Get the current request count and how long the window has been open."""
-    elapsed = int(time.time() - _api_request_count_reset_time)
-    return _api_request_count, elapsed
-
-
-def _reset_api_request_count():
-    """Reset the counter (called when rate limit is hit, so next window starts fresh)."""
-    global _api_request_count, _api_request_count_reset_time
-    _api_request_count = 0
-    _api_request_count_reset_time = time.time()
-
-
 def _log_rate_limit_event(retry_after, resets_in, error_response):
     """Append rate limit event to a dedicated log file for easy monitoring."""
     try:
-        count, elapsed_seconds = get_api_request_count()
-        elapsed_minutes = elapsed_seconds / 60
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         append_rate_limit_log(
-            f"{timestamp} | requests_made={count} in {elapsed_minutes:.1f}min "
-            f"| retry_after={retry_after}s | resets_in={resets_in}s"
+            f"{timestamp} | RATE LIMITED | retry_after={retry_after}s | resets_in={resets_in}s"
         )
-        _reset_api_request_count()
     except Exception as e:
         logging.warning(f"Failed to write rate limit log: {e}")
 
@@ -91,10 +63,9 @@ def _log_data_api_rate_limit(client, method_name):
 
         if limit is not None or remaining is not None:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            count, elapsed = get_api_request_count()
             append_rate_limit_log(
                 f"{timestamp} | DATA API ({method_name}) | limit={limit} remaining={remaining} "
-                f"reset={reset_seconds}s | requests_this_session={count}"
+                f"reset={reset_seconds}s"
             )
     except Exception as e:
         logging.warning(f"Failed to log data API rate limit: {e}")
@@ -363,7 +334,6 @@ class _AuthenticatedClientWrapper:
 
         def method_wrapper(*args, **kwargs):
             try:
-                track_api_request()
                 result = attr(*args, **kwargs)
                 _log_data_api_rate_limit(self._client, name)
                 return result

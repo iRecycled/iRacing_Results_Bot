@@ -8,27 +8,36 @@ load_dotenv()
 # Use INFO for debugging, WARNING for production
 LOG_LEVEL = logging.INFO if os.getenv("DEBUG_MODE", "true").lower() == "true" else logging.WARNING
 
-# Rate limit log configuration
-RATE_LIMIT_LOG = "rate_limits.log"
-MAX_RATE_LIMIT_LOG_LINES = 10
+# Rate limit logger (separate from root logger)
+_rate_limit_logger = None
+
+
+def _get_rate_limit_logger():
+    """Get or create the dedicated rate limit logger with its own rotating file."""
+    global _rate_limit_logger
+    if _rate_limit_logger is not None:
+        return _rate_limit_logger
+
+    _rate_limit_logger = logging.getLogger("rate_limit")
+    _rate_limit_logger.setLevel(logging.INFO)
+    _rate_limit_logger.propagate = False  # Don't duplicate to root/bot.log
+
+    formatter = logging.Formatter(fmt="%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    handler = RotatingFileHandler(
+        filename="rate_limits.log",
+        maxBytes=512 * 1024,  # 512KB
+        backupCount=1,
+        encoding="utf-8",
+    )
+    handler.setFormatter(formatter)
+    _rate_limit_logger.addHandler(handler)
+
+    return _rate_limit_logger
 
 
 def append_rate_limit_log(line):
-    """Append a line to the rate limit log, keeping only the last MAX_RATE_LIMIT_LOG_LINES entries."""
-    try:
-        try:
-            with open(RATE_LIMIT_LOG, "r") as f:
-                lines = f.readlines()
-        except FileNotFoundError:
-            lines = []
-
-        lines.append(line if line.endswith("\n") else line + "\n")
-        lines = lines[-MAX_RATE_LIMIT_LOG_LINES:]
-
-        with open(RATE_LIMIT_LOG, "w") as f:
-            f.writelines(lines)
-    except Exception as e:
-        logging.warning(f"Failed to write rate limit log: {e}")
+    """Append a line to the rate_limits.log via the dedicated rotating logger."""
+    _get_rate_limit_logger().info(line)
 
 
 def setup_logging():
