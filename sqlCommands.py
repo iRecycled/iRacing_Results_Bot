@@ -30,6 +30,17 @@ def init():
                         display_name TEXT
                     )"""
     )
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS league_subscriptions (
+                        id INTEGER PRIMARY KEY,
+                        league_id INTEGER,
+                        season_id INTEGER,
+                        channel_id TEXT,
+                        cust_id TEXT,
+                        last_subsession_id INTEGER,
+                        UNIQUE(league_id, channel_id, cust_id)
+                    )"""
+    )
     conn.commit()
 
 
@@ -151,6 +162,83 @@ def get_all_user_channel_pairs():
     cursor.execute("SELECT user_id, channel_id FROM user_channels")
     result = cursor.fetchall()
     return [(row[0], row[1]) for row in result] if result else []
+
+
+def save_league_subscription(league_id, season_id, channel_id, cust_id):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT OR IGNORE INTO league_subscriptions (league_id, season_id, channel_id, cust_id)
+               VALUES (?, ?, ?, ?)""",
+            (league_id, season_id, str(channel_id), str(cust_id)),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except sqlite3.Error as e:
+        print(f"Failed to save league subscription: {e}")
+        return False
+
+
+def remove_league_subscription(league_id, channel_id, cust_id):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM league_subscriptions WHERE league_id=? AND channel_id=? AND cust_id=?",
+            (league_id, str(channel_id), str(cust_id)),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except sqlite3.Error as e:
+        print(f"Failed to remove league subscription: {e}")
+        return False
+
+
+def get_unique_leagues():
+    """Return distinct (league_id, season_id) pairs being tracked."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT league_id, season_id FROM league_subscriptions")
+    return cursor.fetchall() or []
+
+
+def get_subscriptions_for_league(league_id):
+    """Return (channel_id, cust_id, last_subsession_id) for all subscriptions to a league."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT channel_id, cust_id, last_subsession_id FROM league_subscriptions WHERE league_id=?",
+        (league_id,),
+    )
+    return cursor.fetchall() or []
+
+
+def update_league_season_id(league_id, new_season_id):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE league_subscriptions SET season_id=? WHERE league_id=?",
+            (new_season_id, league_id),
+        )
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Failed to update season_id for league {league_id}: {e}")
+
+
+def update_league_last_subsession(league_id, channel_id, cust_id, subsession_id):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """UPDATE league_subscriptions SET last_subsession_id=?
+               WHERE league_id=? AND channel_id=? AND cust_id=?""",
+            (subsession_id, league_id, str(channel_id), str(cust_id)),
+        )
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Failed to update last_subsession_id: {e}")
 
 
 def delete_all_records():

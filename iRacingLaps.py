@@ -40,7 +40,7 @@ def getLapsChart(last_race, highlighted_cust_id):
 
         all_race_type_results = race_result.get("session_results", [])
         race_session = [
-            session for session in all_race_type_results if session.get("simsession_name") == "RACE"
+            session for session in all_race_type_results if session.get("simsession_number") == 0
         ]
         if race_session:
             results = race_session[0].get("results", [])

@@ -308,7 +308,7 @@ def lastRaceTimeMatching(cust_id, race_time, channel_id):
 
 
 @retry_on_transient_error(max_retries=3, base_delay=1)
-def raceAndDriverData(race, cust_id):
+def raceAndDriverData(race, cust_id, is_league=False):
     # Check rate limit before making API calls
     if is_rate_limited():
         raise RateLimitError(get_rate_limit_remaining())
@@ -321,79 +321,58 @@ def raceAndDriverData(race, cust_id):
             )
             return None
 
+        display_name = race.get("display_name") or sql.get_display_name(cust_id)
+        series_name = race.get("series_name")
+        track_name = race.get("track", {}).get("track_name")
+        dt = datetime.fromisoformat(race.get("session_start_time").replace("Z", "+00:00"))
+        session_start_time = f"<t:{int(dt.timestamp())}:f>"
+
+        if is_league:
+            return formatRaceData(
+                display_name, series_name,
+                race.get("car_name"), session_start_time,
+                race.get("start_position"), race.get("finish_position"),
+                race.get("laps"), race.get("incidents"), race.get("points"),
+                None, None, track_name, None, None,
+                race.get("fastest_lap"), race.get("average_lap"),
+                None, None, 0, 0, is_league=True,
+            )
+
         subsession_id = race.get("subsession_id")
         indv_race_data = getSubsessionDataByUserId(subsession_id, cust_id)
-
-        # Check if subsession data retrieval failed
         if indv_race_data is None:
             logging.error(f"Failed to get subsession data for cust_id={cust_id}")
             return None
 
-        # Use display_name from race data (from /postRace API) or fall back to database
-        display_name = race.get("display_name")
-        if not display_name:
-            display_name = sql.get_display_name(cust_id)
-        series_name = race.get("series_name")
         car_id = race.get("car_id")
         allCarsData = get_cached_cars()
-
-        # Safe car lookup with error handling
         car_matches = list(filter(lambda obj: obj.get("car_id") == car_id, allCarsData))
         if not car_matches:
             logging.error(f"Car with ID {car_id} not found in car data for cust_id={cust_id}")
             return None
         car_name = car_matches[0].get("car_name")
 
-        session_start_time_unfiltered = race.get("session_start_time")
-        # Convert to Unix timestamp for Discord's dynamic timestamp format
-        dt = datetime.fromisoformat(session_start_time_unfiltered.replace("Z", "+00:00"))
-        unix_timestamp = int(dt.timestamp())
-        # Discord format: <t:timestamp:f> shows short date/time in user's local timezone
-        session_start_time = f"<t:{unix_timestamp}:f>"
-        start_position = race.get("start_position")
-        finish_position = race.get("finish_position")
-        laps = race.get("laps")
-        incidents = race.get("incidents")
-        points = race.get("points")
         old_sr = race.get("old_sub_level") / 100
         new_sr = race.get("new_sub_level") / 100
         sr_change = round(new_sr - old_sr, 2)
-
-        # Extract license class letter from user_license (e.g., "A" from "Class A")
-        license_class = (
-            indv_race_data.user_license.split()[-1] if indv_race_data.user_license else "?"
-        )
-
-        # Format SR with change and current rating: +0.03 (A2.47)
+        license_class = indv_race_data.user_license.split()[-1] if indv_race_data.user_license else "?"
         sr_change_str = f"{'+' if sr_change > 0 else ''}{sr_change} ({license_class}{new_sr:.2f})"
 
         old_ir = race.get("oldi_rating")
         new_ir = race.get("newi_rating")
         ir_change = new_ir - old_ir
         ir_change_str = f"{'+' if ir_change > 0 else ''}{ir_change} ({new_ir})"
-        track_name = race.get("track").get("track_name")
 
         return formatRaceData(
-            display_name,
-            series_name,
-            car_name,
-            session_start_time,
-            start_position,
-            finish_position,
-            laps,
-            incidents,
-            points,
-            sr_change_str,
-            ir_change_str,
-            track_name,
-            indv_race_data.split_number,
-            indv_race_data.series_logo,
-            indv_race_data.fastest_lap,
-            indv_race_data.average_lap,
-            indv_race_data.user_license,
-            indv_race_data.sof,
-            indv_race_data.team_total_laps,
-            indv_race_data.team_total_incidents,
+            display_name, series_name, car_name, session_start_time,
+            race.get("start_position"), race.get("finish_position"),
+            race.get("laps"), race.get("incidents"), race.get("points"),
+            sr_change_str, ir_change_str, track_name,
+            indv_race_data.split_number, indv_race_data.series_logo,
+            indv_race_data.fastest_lap, indv_race_data.average_lap,
+            indv_race_data.user_license, indv_race_data.sof,
+            indv_race_data.team_total_laps, indv_race_data.team_total_incidents,
+            is_league,
         )
     except AccessTokenInvalid:
         logging.warning(
@@ -537,11 +516,12 @@ def getSubsessionDataByUserId(subsession_id, user_id):
             logging.warning(f"No session_results found for subsession_id={subsession_id}")
             return None
 
-        race_sessions = [s for s in all_race_type_results if s.get("simsession_name") == "RACE"]
+        # simsession_number 0 is always the main event (RACE, FEATURE, etc.)
+        race_sessions = [s for s in all_race_type_results if s.get("simsession_number") == 0]
         if not race_sessions:
             session_names = [s.get("simsession_name") for s in all_race_type_results]
             logging.warning(
-                f"No RACE session found for subsession_id={subsession_id}. Available sessions: {session_names}"
+                f"No main race session found for subsession_id={subsession_id}. Available sessions: {session_names}"
             )
             return None
 
@@ -555,7 +535,7 @@ def getSubsessionDataByUserId(subsession_id, user_id):
         # Extract driver-specific stats
         fastest_lap = convert_time(driver_data.get("best_lap_time"))
         average_lap = convert_time(driver_data.get("average_lap"))
-        user_license = getDriverLicense(int(driver_data.get("old_license_level")), licenses)
+        user_license = getDriverLicense(int(driver_data.get("old_license_level")), licenses) if licenses else None
 
         # Calculate team totals if this is a team race
         team_totals = {"team_total_laps": 0, "team_total_incidents": 0}
@@ -662,6 +642,7 @@ def formatRaceData(
     sof,
     team_total_laps,
     team_total_incidents,
+    is_league=False,
 ):
     message = (
         f"Name: {display_name}\n"
@@ -680,45 +661,164 @@ def formatRaceData(
         message += f"Team Total Laps: {team_total_laps}\n"
         message += f"Team Total Incidents: {team_total_incidents}\n"
 
-    message += (
-        f"Points: {points}\n"
-        f"Strength of Field (SOF): {sof}\n"
-        f"SR Change: {sr_change_str}\n"
-        f"iRating Change: {ir_change_str}\n"
-        f"User License: {user_license}\n"
-        f"Split Number: {split_number}\n"
-        # f"Series Logo: {series_logo}\n"
-        f"Fastest Lap: {fastest_lap}\n"
-        f"Average Lap: {average_lap}\n"
-    )
+    if is_league:
+        message += (
+            f"League Points: {points}\n"
+            f"Fastest Lap: {fastest_lap}\n"
+            f"Average Lap: {average_lap}\n"
+        )
+    else:
+        message += (
+            f"Points: {points}\n"
+            f"Strength of Field (SOF): {sof}\n"
+            f"SR Change: {sr_change_str}\n"
+            f"iRating Change: {ir_change_str}\n"
+            f"User License: {user_license}\n"
+            f"Split Number: {split_number}\n"
+            # f"Series Logo: {series_logo}\n"
+            f"Fastest Lap: {fastest_lap}\n"
+            f"Average Lap: {average_lap}\n"
+        )
 
     return message
 
 
-# def test_api_request():
-#     ir_client = get_authenticated_client()
-#     if ir_client is None:
-#         return "Not ready - rate limited or login failed"
+@retry_on_transient_error(max_retries=3, base_delay=1)
+def get_active_league_season(league_id):
+    """Get the latest active season for a league.
 
-#     try:
-#         # Fetch the specific Daytona 24h subsession results
-#         subsession_id = 82799848
-#         data = ir_client.result(subsession_id)
-#         logging.info(f"API response type: {type(data)}")
-#         logging.info(f"API response: {data}")
+    Returns:
+        Dict with season_id and season_name, or None on failure.
+    """
+    if is_rate_limited():
+        raise RateLimitError(get_rate_limit_remaining())
 
-#         # Write to test2.json file
-#         try:
-#             with open('test2.json', 'w') as f:
-#                 json.dump(data, f, indent=2, default=str)
-#             return "Test data written to test2.json"
-#         except Exception as json_e:
-#             logging.error(f"Failed to serialize to JSON: {json_e}")
-#             # Return a string representation instead
-#             with open('test2.json', 'w') as f:
-#                 f.write(str(data))
-#             return "Test data written to test2.json (as string)"
-#     except Exception as e:
-#         logging.exception(e)
-#         logging.error(f"Error in test_api_request: {type(e).__name__}: {e}")
-#         return f"Error fetching data: {e}"
+    try:
+        ir_client = get_authenticated_client()
+        if ir_client is None:
+            return None
+
+        data = ir_client.league_seasons(league_id=league_id)
+        seasons = data.get("seasons", []) if isinstance(data, dict) else []
+
+        if not seasons:
+            logging.warning(f"No seasons found for league_id={league_id}")
+            return None
+
+        # Prefer the most recent active season, fall back to last in list
+        active = [s for s in seasons if s.get("active")]
+        latest = active[-1] if active else seasons[-1]
+
+        league_data = ir_client.league_get(league_id=league_id)
+        league_name = league_data.get("league_name", f"League {league_id}") if league_data else f"League {league_id}"
+
+        return {
+            "season_id": latest.get("season_id"),
+            "season_name": latest.get("season_name", "Unknown Season"),
+            "league_name": league_name,
+        }
+    except AccessTokenInvalid:
+        _client_manager.clear_client()
+        return None
+    except Exception as e:
+        logging.exception(e)
+        return None
+
+
+@retry_on_transient_error(max_retries=3, base_delay=1)
+def get_completed_league_sessions(league_id, season_id):
+    """Get sessions with results for a league season, sorted by subsession_id ascending.
+
+    Returns:
+        List of session dicts where has_results is True and subsession_id is present.
+    """
+    if is_rate_limited():
+        raise RateLimitError(get_rate_limit_remaining())
+
+    try:
+        ir_client = get_authenticated_client()
+        if ir_client is None:
+            return []
+
+        data = ir_client.league_season_sessions(
+            league_id=league_id,
+            season_id=season_id,
+            results_only=False,
+        )
+        sessions = data.get("sessions", []) if isinstance(data, dict) else []
+        completed = [s for s in sessions if s.get("has_results") and s.get("subsession_id")]
+        return sorted(completed, key=lambda s: s["subsession_id"])
+    except AccessTokenInvalid:
+        _client_manager.clear_client()
+        return []
+    except Exception as e:
+        logging.exception(e)
+        return []
+
+
+@retry_on_transient_error(max_retries=3, base_delay=1)
+def get_race_for_driver_by_subsession(subsession_id, cust_id, race_number=None):
+    """Find a driver's result in a subsession using the result() API directly.
+
+    Returns:
+        Race dict (stats_member_recent_races-compatible format) with display_name added,
+        or None if the driver did not participate or the race wasn't found.
+    """
+    if is_rate_limited():
+        raise RateLimitError(get_rate_limit_remaining())
+
+    try:
+        ir_client = get_authenticated_client()
+        if ir_client is None:
+            return None
+
+        result_data = ir_client.result(subsession_id)
+        if not result_data:
+            logging.warning(f"get_race_for_driver_by_subsession: no data for subsession={subsession_id}")
+            return None
+
+        # simsession_number 0 is always the main event (RACE, FEATURE, etc.)
+        session_results = result_data.get("session_results", [])
+        main_session = next((s for s in session_results if s.get("simsession_number") == 0), None)
+        if not main_session:
+            logging.warning(f"get_race_for_driver_by_subsession: no main session in subsession={subsession_id}")
+            return None
+
+        driver_result = next(
+            (r for r in main_session.get("results", []) if r.get("cust_id") == int(cust_id)),
+            None,
+        )
+        if not driver_result:
+            return None
+
+        league_name = result_data.get("league_name") or result_data.get("series_name")
+        series_name = f"{league_name} - Race {race_number}" if race_number else league_name
+
+        return {
+            "subsession_id": subsession_id,
+            "display_name": sql.get_display_name(cust_id) or getDriverName(cust_id),
+            "series_name": series_name,
+            "car_id": driver_result.get("car_id"),
+            "car_name": driver_result.get("car_name"),
+            "fastest_lap": convert_time(driver_result.get("best_lap_time")),
+            "average_lap": convert_time(driver_result.get("average_lap")),
+            "session_start_time": result_data.get("start_time"),
+            "start_position": driver_result.get("starting_position", -1) + 1,
+            "finish_position": driver_result.get("finish_position", -1) + 1,
+            "laps": driver_result.get("laps_complete"),
+            "incidents": driver_result.get("incidents"),
+            "points": driver_result.get("league_points"),
+            "old_sub_level": driver_result.get("old_sub_level"),
+            "new_sub_level": driver_result.get("new_sub_level"),
+            "oldi_rating": driver_result.get("oldi_rating"),
+            "newi_rating": driver_result.get("newi_rating"),
+            "track": result_data.get("track"),
+        }
+    except AccessTokenInvalid:
+        _client_manager.clear_client()
+        return None
+    except Exception as e:
+        logging.exception(e)
+        return None
+
+

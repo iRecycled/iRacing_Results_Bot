@@ -79,6 +79,7 @@ async def on_ready():
     sql.init()
     # sql.delete_all_records()
     startLoopForUpdates.start()
+    leagueLoop.start()
 
 
 @tasks.loop(seconds=60)
@@ -329,6 +330,167 @@ async def postRace(ctx, cust_id: str, subsession_id: str):
         logging.exception(e)
         logging.error(f"Error in postRace command: {e}")
         await ctx.send(f"An error occurred while posting the race: {str(e)}")
+
+
+@bot.command()
+@rate_limit_handler
+async def addLeague(ctx, cust_id: str, league_id: str):
+    """Subscribe a driver to a league in this channel.
+    Usage: /addLeague <cust_id> <league_id>
+    """
+    channel_id = ctx.channel.id
+    try:
+        try:
+            cust_id_int = int(cust_id)
+            league_id_int = int(league_id)
+            if cust_id_int <= 0 or league_id_int <= 0:
+                await ctx.send("Invalid IDs: Please provide positive numbers.")
+                return
+        except ValueError:
+            await ctx.send("Invalid IDs: Please provide valid numbers.")
+            return
+
+        loop = asyncio.get_event_loop()
+
+        season_info = await loop.run_in_executor(
+            executor, irApi.get_active_league_season, league_id_int
+        )
+        if not season_info:
+            await ctx.send(f"Could not find an active season for league `{league_id}`. Check the league ID.")
+            return
+
+        driver_name = await loop.run_in_executor(executor, irApi.getDriverName, cust_id)
+        if not driver_name:
+            await ctx.send(f"Could not find driver with cust_id `{cust_id}`.")
+            return
+
+        season_id = season_info["season_id"]
+        season_name = season_info["season_name"]
+        league_name = season_info["league_name"]
+
+        if sql.save_league_subscription(league_id_int, season_id, channel_id, cust_id_int):
+            await ctx.send(
+                f"Added **{driver_name}** to **{league_name}** — {season_name}"
+            )
+        else:
+            await ctx.send(f"**{driver_name}** is already subscribed to **{league_name}** in this channel.")
+    except Exception as e:
+        logging.exception(e)
+        await ctx.send(f"Error adding league subscription: {e}")
+
+
+@bot.command()
+async def removeLeague(ctx, cust_id: str, league_id: str):
+    """Unsubscribe a driver from a league in this channel.
+    Usage: /removeLeague <cust_id> <league_id>
+    """
+    channel_id = ctx.channel.id
+    try:
+        try:
+            cust_id_int = int(cust_id)
+            league_id_int = int(league_id)
+        except ValueError:
+            await ctx.send("Invalid IDs: Please provide valid numbers.")
+            return
+
+        if sql.remove_league_subscription(league_id_int, channel_id, cust_id_int):
+            await ctx.send(f"Removed cust_id `{cust_id}` from league `{league_id}`.")
+        else:
+            await ctx.send(f"No subscription found for cust_id `{cust_id}` in league `{league_id}`.")
+    except Exception as e:
+        logging.exception(e)
+        await ctx.send(f"Error removing league subscription: {e}")
+
+
+@tasks.loop(seconds=60)
+async def leagueLoop():
+    try:
+        unique_leagues = sql.get_unique_leagues()
+        if not unique_leagues:
+            return
+
+        for league_id, stored_season_id in unique_leagues:
+            await processLeague(league_id, stored_season_id)
+            await asyncio.sleep(REQUEST_DELAY)
+    except Exception as e:
+        logging.exception(e)
+        logging.error("Error in leagueLoop")
+
+
+async def processLeague(league_id, stored_season_id):
+    loop = asyncio.get_event_loop()
+
+    # Check for season rollover
+    season_info = await loop.run_in_executor(
+        executor, irApi.get_active_league_season, league_id
+    )
+    if not season_info:
+        logging.warning(f"Could not get season info for league_id={league_id}")
+        return
+
+    current_season_id = season_info["season_id"]
+    if current_season_id != stored_season_id:
+        logging.info(f"League {league_id} season updated: {stored_season_id} -> {current_season_id}")
+        sql.update_league_season_id(league_id, current_season_id)
+        stored_season_id = current_season_id
+
+    # Get completed sessions
+    sessions = await loop.run_in_executor(
+        executor, irApi.get_completed_league_sessions, league_id, stored_season_id
+    )
+    if not sessions:
+        return
+
+    subscriptions = sql.get_subscriptions_for_league(league_id)
+    if not subscriptions:
+        return
+
+    for race_number, session in enumerate(sessions, start=1):
+        subsession_id = session.get("subsession_id")
+
+        for channel_id, cust_id, last_subsession_id in subscriptions:
+            if last_subsession_id and subsession_id <= last_subsession_id:
+                continue  # Already posted
+
+            logging.info(f"New league race: league={league_id} subsession={subsession_id} cust_id={cust_id}")
+            await processLeagueRace(channel_id, cust_id, league_id, subsession_id, race_number)
+            await asyncio.sleep(REQUEST_DELAY)
+
+
+@rate_limit_handler
+async def processLeagueRace(channel_id, cust_id, league_id, subsession_id, race_number):
+    loop = asyncio.get_event_loop()
+
+    # Get this driver's race data from their recent races
+    race_data = await loop.run_in_executor(
+        executor, irApi.get_race_for_driver_by_subsession, subsession_id, cust_id, race_number
+    )
+
+    # Always mark as seen so we don't re-check every tick
+    sql.update_league_last_subsession(league_id, channel_id, cust_id, subsession_id)
+
+    if race_data is None:
+        logging.info(f"Driver cust_id={cust_id} not in subsession={subsession_id}, skipping")
+        return
+
+    formatted_message = await loop.run_in_executor(
+        executor, irApi.raceAndDriverData, race_data, cust_id, True
+    )
+    if formatted_message is None:
+        logging.warning(f"Failed to format league race for cust_id={cust_id}, subsession={subsession_id}")
+        return
+
+    chart_path = None
+    chart_success = await loop.run_in_executor(executor, irLaps.getLapsChart, race_data, cust_id)
+    if chart_success:
+        chart_path = "race_plot.png"
+
+    channel = bot.get_channel(int(channel_id))
+    if channel is None:
+        logging.error(f"Channel {channel_id} not found for league race post")
+        return
+
+    await postRaceToDiscord(channel, formatted_message, chart_path)
 
 
 bot.run(TOKEN)
