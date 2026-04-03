@@ -722,6 +722,7 @@ def get_active_league_season(league_id):
         return None
     except Exception as e:
         logging.exception(e)
+        _client_manager.clear_client()
         return None
 
 
@@ -753,6 +754,7 @@ def get_completed_league_sessions(league_id, season_id):
         return []
     except Exception as e:
         logging.exception(e)
+        _client_manager.clear_client()
         return []
 
 
@@ -819,6 +821,7 @@ def get_race_for_driver_by_subsession(subsession_id, cust_id, race_number=None):
         return None
     except Exception as e:
         logging.exception(e)
+        _client_manager.clear_client()
         return None
 
 
